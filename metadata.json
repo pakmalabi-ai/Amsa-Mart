@@ -1,0 +1,5 @@
+{
+  "name": "Amsa Mart",
+  "description": "Aplikasi Manajemen Mini Market modern dengan fitur Kasir (POS), Inventaris, Buku Kas, dan Laporan Keuangan Real-time. Terintegrasi dengan Google Sheets.",
+  "requestFramePermissions": []
+}
