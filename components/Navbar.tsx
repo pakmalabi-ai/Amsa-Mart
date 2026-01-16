@@ -14,9 +14,9 @@ const Navbar: React.FC<NavbarProps> = ({ currentView, setView, onOpenSettings, u
   // Definisi menu dengan hak akses
   const allNavItems = [
     { id: 'POS', label: 'Kasir', icon: ShoppingCart, roles: ['admin', 'kasir'] },
-    { id: 'INVENTORY', label: 'Barang', icon: LayoutGrid, roles: ['admin'] },
-    { id: 'LEDGER', label: 'Buku Kas', icon: BookOpen, roles: ['admin'] },
-    { id: 'REPORTS', label: 'Laporan', icon: BarChart3, roles: ['admin'] },
+    { id: 'INVENTORY', label: 'Barang', icon: LayoutGrid, roles: ['admin', 'manager'] },
+    { id: 'LEDGER', label: 'Buku Kas', icon: BookOpen, roles: ['admin', 'manager'] },
+    { id: 'REPORTS', label: 'Laporan', icon: BarChart3, roles: ['admin', 'manager'] },
   ] as const;
 
   // Filter menu berdasarkan role user yang sedang login

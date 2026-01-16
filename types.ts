@@ -38,7 +38,7 @@ export interface ApiResponse<T> {
   id?: string;
 }
 
-export type UserRole = 'admin' | 'kasir';
+export type UserRole = 'admin' | 'kasir' | 'manager';
 
 export interface User {
   username: string;

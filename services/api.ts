@@ -1,5 +1,5 @@
 import { SCRIPT_URL as CONST_URL, MOCK_PRODUCTS, MOCK_LEDGER } from '../constants';
-import { Product, LedgerEntry } from '../types';
+import { Product, LedgerEntry, Transaction } from '../types';
 
 // Helper untuk mendapatkan URL aktif (prioritas LocalStorage, fallback ke constants)
 const getBaseUrl = () => {
@@ -34,6 +34,21 @@ export const Api = {
       return data.error ? [] : data;
     } catch (error) {
       console.error("Gagal mengambil data buku kas", error);
+      return [];
+    }
+  },
+
+  getTransactions: async (): Promise<Transaction[]> => {
+    const url = getBaseUrl();
+    if (!url) {
+      return new Promise(resolve => setTimeout(() => resolve([]), 500));
+    }
+    try {
+      const res = await fetch(`${url}?action=getTransactions`);
+      const data = await res.json();
+      return data.error ? [] : data;
+    } catch (error) {
+      console.error("Gagal mengambil data transaksi", error);
       return [];
     }
   },

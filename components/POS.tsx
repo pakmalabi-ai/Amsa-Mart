@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { Product, CartItem } from '../types';
-import { Search, Plus, Minus, Trash2, ShoppingBag } from 'lucide-react';
+import { Product, CartItem, Transaction } from '../types';
+import { Search, Plus, Minus, Trash2, ShoppingBag, FileText, Download, X } from 'lucide-react';
 import { Api } from '../services/api';
+import { exportToExcel } from '../utils/excelExport';
 
 interface POSProps {
   inventory: Product[];
@@ -12,6 +13,11 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isCheckingOut, setIsCheckingOut] = useState(false);
+  
+  // State untuk Laporan Harian
+  const [isReportOpen, setIsReportOpen] = useState(false);
+  const [dailyTransactions, setDailyTransactions] = useState<Transaction[]>([]);
+  const [loadingReport, setLoadingReport] = useState(false);
 
   const filteredItems = useMemo(() => {
     return inventory.filter(item => 
@@ -72,19 +78,57 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
     }
   };
 
+  const openDailyReport = async () => {
+    setIsReportOpen(true);
+    setLoadingReport(true);
+    try {
+      const allTrans = await Api.getTransactions();
+      const today = new Date().toDateString();
+      // Filter transaksi hari ini
+      const todays = allTrans.filter(t => new Date(t.tanggal).toDateString() === today);
+      // Sort terbaru diatas
+      setDailyTransactions(todays.sort((a,b) => new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime()));
+    } catch (e) {
+      console.error(e);
+      alert('Gagal mengambil data laporan harian');
+    } finally {
+      setLoadingReport(false);
+    }
+  };
+
+  const handleExportDaily = () => {
+    const dataToExport = dailyTransactions.map(t => ({
+      ID: t.id,
+      Tanggal: new Date(t.tanggal).toLocaleString('id-ID'),
+      Detail_Item: t.item_json,
+      Total: t.total,
+      Tipe: t.tipe
+    }));
+    exportToExcel(dataToExport, `Laporan_Harian_POS_${new Date().toISOString().split('T')[0]}`);
+  };
+
   return (
     <div className="flex flex-col md:flex-row h-[calc(100vh-4rem)] bg-gray-50 overflow-hidden">
       {/* Product Grid */}
       <div className="flex-1 p-4 overflow-y-auto">
-        <div className="mb-4 relative">
-          <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Cari barang (nama atau kode)..."
-            className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-          />
+        <div className="mb-4 flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Cari barang (nama atau kode)..."
+              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <button 
+            onClick={openDailyReport}
+            className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 shadow"
+            title="Laporan Harian"
+          >
+            <FileText size={18} /> <span className="hidden sm:inline">Laporan Harian</span>
+          </button>
         </div>
         
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -158,6 +202,66 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
           </button>
         </div>
       </div>
+
+      {/* Modal Laporan Harian */}
+      {isReportOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl h-[80vh] flex flex-col">
+            <div className="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-xl">
+              <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                <FileText className="text-purple-600" />
+                Laporan Transaksi Hari Ini
+              </h3>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={handleExportDaily}
+                  className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded text-sm flex items-center gap-2"
+                >
+                  <Download size={16} /> Export Excel
+                </button>
+                <button onClick={() => setIsReportOpen(false)} className="text-gray-400 hover:text-gray-600">
+                  <X size={24} />
+                </button>
+              </div>
+            </div>
+            
+            <div className="flex-1 overflow-auto p-4">
+              {loadingReport ? (
+                 <div className="flex justify-center items-center h-full">Loading...</div>
+              ) : dailyTransactions.length === 0 ? (
+                 <div className="text-center text-gray-500 mt-10">Belum ada transaksi hari ini.</div>
+              ) : (
+                <table className="w-full text-left border-collapse">
+                  <thead className="bg-gray-100 text-xs uppercase text-gray-600 sticky top-0">
+                    <tr>
+                      <th className="p-3 border-b">Waktu</th>
+                      <th className="p-3 border-b">Item</th>
+                      <th className="p-3 border-b text-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 text-sm">
+                    {dailyTransactions.map(t => (
+                      <tr key={t.id} className="hover:bg-gray-50">
+                        <td className="p-3">{new Date(t.tanggal).toLocaleTimeString('id-ID')}</td>
+                        <td className="p-3 max-w-md truncate text-gray-600">{t.item_json}</td>
+                        <td className="p-3 text-right font-bold text-gray-800">Rp {t.total.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-gray-50 font-bold">
+                    <tr>
+                      <td colSpan={2} className="p-3 text-right">Total Pendapatan Hari Ini:</td>
+                      <td className="p-3 text-right text-green-600">
+                        Rp {dailyTransactions.reduce((acc, t) => acc + t.total, 0).toLocaleString()}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

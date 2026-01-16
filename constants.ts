@@ -1,6 +1,6 @@
 // Ganti URL ini dengan URL Web App Google Apps Script Anda setelah deploy
 // Format: https://script.google.com/macros/s/XXXXX/exec
-export const SCRIPT_URL = ''; 
+export const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyWd-WKXpRJaRmA3U_EPEz_ny0SjmKuIFKkmfJ95xLGwbHKMwkYkwopuUYtLpHTgpxw0w/exec'; 
 
 export const MOCK_PRODUCTS = [
   { id: '1', kode: 'BRG001', nama: 'Indomie Goreng', harga_beli: 2500, harga_jual: 3500, stok: 100, kategori: 'Makanan' },

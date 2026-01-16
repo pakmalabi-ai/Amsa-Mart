@@ -1,17 +1,50 @@
 import React, { useState } from 'react';
 import { Product } from '../types';
 import { Api } from '../services/api';
-import { Edit, Trash2, Plus, Save, X } from 'lucide-react';
+import { Edit, Trash2, Plus, Save, X, Download, RefreshCw } from 'lucide-react';
+import { exportToExcel } from '../utils/excelExport';
 
 interface InventoryProps {
   data: Product[];
   refreshData: () => void;
 }
 
+// Definisi Kategori dan Prefix Kode
+const CATEGORIES = [
+  { label: 'Makanan & Minuman', prefix: 'MM' },
+  { label: 'Produk Rumah Tangga', prefix: 'RT' },
+  { label: 'Perawatan Pribadi & Kecantikan', prefix: 'PK' },
+  { label: 'Produk Bayi', prefix: 'PB' },
+  { label: 'Produk Lain-Lain', prefix: 'PL' },
+];
+
 const Inventory: React.FC<InventoryProps> = ({ data, refreshData }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Partial<Product> | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Fungsi untuk generate kode barang otomatis
+  const generateNextCode = (categoryLabel: string): string => {
+    const category = CATEGORIES.find(c => c.label === categoryLabel);
+    if (!category) return '';
+
+    const prefix = category.prefix;
+    
+    // Filter barang yang punya prefix sama
+    const existingCodes = data
+      .filter(item => item.kode.startsWith(prefix + '_'))
+      .map(item => {
+        const parts = item.kode.split('_');
+        return parseInt(parts[1]) || 0;
+      });
+
+    // Cari nomor tertinggi
+    const maxNumber = existingCodes.length > 0 ? Math.max(...existingCodes) : 0;
+    const nextNumber = maxNumber + 1;
+
+    // Format jadi 3 digit (001, 002, dst)
+    return `${prefix}_${String(nextNumber).padStart(3, '0')}`;
+  };
 
   const handleEdit = (item: Product) => {
     setEditingItem(item);
@@ -19,8 +52,16 @@ const Inventory: React.FC<InventoryProps> = ({ data, refreshData }) => {
   };
 
   const handleAdd = () => {
+    const defaultCategory = CATEGORIES[0].label;
+    const newCode = generateNextCode(defaultCategory);
+
     setEditingItem({
-      kode: '', nama: '', harga_beli: 0, harga_jual: 0, stok: 0, kategori: 'Umum'
+      kode: newCode,
+      nama: '',
+      harga_beli: 0,
+      harga_jual: 0,
+      stok: 0,
+      kategori: defaultCategory
     });
     setIsModalOpen(true);
   };
@@ -49,16 +90,53 @@ const Inventory: React.FC<InventoryProps> = ({ data, refreshData }) => {
     }
   };
 
+  const handleExport = (period: 'Harian' | 'Mingguan' | 'Bulanan') => {
+    const timestamp = new Date().toISOString().split('T')[0];
+    exportToExcel(data, `Stok_Barang_${period}_${timestamp}`);
+  };
+
+  const handleCategoryChange = (newCategory: string) => {
+    if (editingItem) {
+      // Jika mode tambah baru (tidak ada ID), generate kode baru saat ganti kategori
+      if (!editingItem.id) {
+        const newCode = generateNextCode(newCategory);
+        setEditingItem({ ...editingItem, kategori: newCategory, kode: newCode });
+      } else {
+        // Jika mode edit, hanya ganti kategori, kode jangan dirubah otomatis agar tidak kacau
+        setEditingItem({ ...editingItem, kategori: newCategory });
+      }
+    }
+  };
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-800">Manajemen Stok Barang</h2>
-        <button 
-          onClick={handleAdd}
-          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 shadow"
-        >
-          <Plus size={18} /> Tambah Barang
-        </button>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+        <div>
+           <h2 className="text-2xl font-bold text-gray-800">Manajemen Stok Barang</h2>
+           <p className="text-sm text-gray-500">Pantau dan kelola inventaris toko.</p>
+        </div>
+        
+        <div className="flex flex-wrap gap-2">
+          {/* Tombol Export Group */}
+          <div className="flex bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+             <button onClick={() => handleExport('Harian')} className="px-3 py-2 text-xs font-medium hover:bg-gray-50 border-r">
+               Exp. Harian
+             </button>
+             <button onClick={() => handleExport('Mingguan')} className="px-3 py-2 text-xs font-medium hover:bg-gray-50 border-r">
+               Exp. Mingguan
+             </button>
+             <button onClick={() => handleExport('Bulanan')} className="px-3 py-2 text-xs font-medium hover:bg-gray-50 flex items-center gap-1">
+               <Download size={14}/> Exp. Bulanan
+             </button>
+          </div>
+
+          <button 
+            onClick={handleAdd}
+            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 shadow"
+          >
+            <Plus size={18} /> Tambah Barang
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-lg shadow overflow-hidden border border-gray-200">
@@ -106,41 +184,100 @@ const Inventory: React.FC<InventoryProps> = ({ data, refreshData }) => {
       {isModalOpen && editingItem && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
-            <div className="p-4 border-b flex justify-between items-center">
-              <h3 className="text-lg font-bold">{editingItem.id ? 'Edit Barang' : 'Tambah Barang Baru'}</h3>
+            <div className="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-xl">
+              <h3 className="text-lg font-bold text-gray-800">{editingItem.id ? 'Edit Barang' : 'Tambah Barang Baru'}</h3>
               <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
+              
+              {/* Kategori Dropdown */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Kategori Barang</label>
+                <select 
+                  required
+                  className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 bg-white"
+                  value={editingItem.kategori}
+                  onChange={e => handleCategoryChange(e.target.value)}
+                >
+                  {CATEGORIES.map((cat) => (
+                    <option key={cat.prefix} value={cat.label}>
+                      {cat.label} ({cat.prefix})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Kode Barang</label>
-                  <input required type="text" className="w-full border rounded p-2" value={editingItem.kode} onChange={e => setEditingItem({...editingItem, kode: e.target.value})} />
+                  <div className="relative">
+                    <input 
+                      required 
+                      type="text" 
+                      className="w-full border border-gray-300 rounded-lg p-2 bg-gray-100 text-gray-600 font-mono" 
+                      value={editingItem.kode} 
+                      readOnly // Auto-generated, jadi readOnly lebih aman
+                    />
+                    {!editingItem.id && (
+                      <button 
+                        type="button"
+                        onClick={() => editingItem.kategori && handleCategoryChange(editingItem.kategori)}
+                        className="absolute right-2 top-2 text-gray-400 hover:text-blue-500"
+                        title="Regenerate Code"
+                      >
+                        <RefreshCw size={16}/>
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-gray-400 mt-1">*Otomatis sesuai kategori</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Kategori</label>
-                  <input required type="text" className="w-full border rounded p-2" value={editingItem.kategori} onChange={e => setEditingItem({...editingItem, kategori: e.target.value})} />
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Stok Awal</label>
+                  <input 
+                    required 
+                    type="number" 
+                    className="w-full border border-gray-300 rounded-lg p-2" 
+                    value={editingItem.stok} 
+                    onChange={e => setEditingItem({...editingItem, stok: Number(e.target.value)})} 
+                  />
                 </div>
               </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Nama Barang</label>
-                <input required type="text" className="w-full border rounded p-2" value={editingItem.nama} onChange={e => setEditingItem({...editingItem, nama: e.target.value})} />
+                <input required type="text" className="w-full border border-gray-300 rounded-lg p-2" value={editingItem.nama} onChange={e => setEditingItem({...editingItem, nama: e.target.value})} />
               </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Harga Beli</label>
-                  <input required type="number" className="w-full border rounded p-2" value={editingItem.harga_beli} onChange={e => setEditingItem({...editingItem, harga_beli: Number(e.target.value)})} />
+                  <div className="relative">
+                    <span className="absolute left-3 top-2 text-gray-500 text-sm">Rp</span>
+                    <input 
+                      required 
+                      type="number" 
+                      className="w-full border border-gray-300 rounded-lg p-2 pl-8" 
+                      value={editingItem.harga_beli} 
+                      onChange={e => setEditingItem({...editingItem, harga_beli: Number(e.target.value)})} 
+                    />
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Harga Jual</label>
-                  <input required type="number" className="w-full border rounded p-2" value={editingItem.harga_jual} onChange={e => setEditingItem({...editingItem, harga_jual: Number(e.target.value)})} />
+                  <div className="relative">
+                    <span className="absolute left-3 top-2 text-gray-500 text-sm">Rp</span>
+                    <input 
+                      required 
+                      type="number" 
+                      className="w-full border border-gray-300 rounded-lg p-2 pl-8" 
+                      value={editingItem.harga_jual} 
+                      onChange={e => setEditingItem({...editingItem, harga_jual: Number(e.target.value)})} 
+                    />
+                  </div>
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Stok Awal</label>
-                <input required type="number" className="w-full border rounded p-2" value={editingItem.stok} onChange={e => setEditingItem({...editingItem, stok: Number(e.target.value)})} />
-              </div>
 
-              <button type="submit" disabled={isSaving} className="w-full bg-blue-600 text-white py-2 rounded-lg font-bold hover:bg-blue-700 disabled:bg-gray-400 flex justify-center items-center gap-2 mt-4">
+              <button type="submit" disabled={isSaving} className="w-full bg-blue-600 text-white py-2.5 rounded-lg font-bold hover:bg-blue-700 disabled:bg-gray-400 flex justify-center items-center gap-2 mt-6 shadow-md transition-all active:scale-95">
                 <Save size={18} /> {isSaving ? 'Menyimpan...' : 'Simpan Barang'}
               </button>
             </form>

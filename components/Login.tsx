@@ -20,6 +20,8 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       onLogin({ username: 'Admin', role: 'admin' });
     } else if (username === 'kasir' && password === 'smaksaka') {
       onLogin({ username: 'Kasir', role: 'kasir' });
+    } else if (username === 'manager' && password === 'smaksaka21') {
+      onLogin({ username: 'Manager', role: 'manager' });
     } else {
       setError('Username atau password salah!');
     }

@@ -16,32 +16,36 @@ function App() {
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isConnected, setIsConnected] = useState(false);
 
-  // Cek sesi login & URL saat startup
+  // Cek sesi login saat startup
   useEffect(() => {
      // Cek Login
      const savedUser = localStorage.getItem('AMSA_MART_USER');
      if (savedUser) {
        setUser(JSON.parse(savedUser));
      }
-
-     // Cek Koneksi
-     const url = localStorage.getItem('AMSA_MART_API_URL');
-     setIsConnected(!!url);
   }, []);
 
   // Effect untuk memuat data jika user sudah login
   useEffect(() => {
     if (user) {
       loadData();
+      // Set default view berdasarkan role saat pertama kali load / login
+      if (user.role === 'manager' && currentView === 'POS') {
+        setCurrentView('REPORTS');
+      }
     }
   }, [user]);
 
   const handleLogin = (loggedInUser: User) => {
     setUser(loggedInUser);
     localStorage.setItem('AMSA_MART_USER', JSON.stringify(loggedInUser));
-    setCurrentView('POS'); // Default view setelah login
+    // Redirect manager ke Laporan, karena tidak punya akses POS
+    if (loggedInUser.role === 'manager') {
+      setCurrentView('REPORTS');
+    } else {
+      setCurrentView('POS'); 
+    }
   };
 
   const handleLogout = () => {
@@ -68,8 +72,6 @@ function App() {
   };
 
   const handleSaveSettings = () => {
-    const url = localStorage.getItem('AMSA_MART_API_URL');
-    setIsConnected(!!url);
     loadData(); // Reload data dengan URL baru
   };
 
@@ -84,23 +86,24 @@ function App() {
     }
 
     // Proteksi Tampilan berdasarkan Role
-    // Jika User Kasir mencoba akses selain POS, paksa kembali ke POS
+    // Kasir hanya boleh POS
     if (user?.role === 'kasir' && currentView !== 'POS') {
       return <POS inventory={inventory} refreshData={loadData} />;
+    }
+    // Manager tidak boleh POS
+    if (user?.role === 'manager' && currentView === 'POS') {
+       return <div className="p-8 text-center text-red-500">Anda tidak memiliki akses ke halaman ini.</div>;
     }
 
     switch (currentView) {
       case 'POS':
         return <POS inventory={inventory} refreshData={loadData} />;
       case 'INVENTORY':
-        // Hanya Admin
-        return user?.role === 'admin' ? <Inventory data={inventory} refreshData={loadData} /> : null;
+        return <Inventory data={inventory} refreshData={loadData} />;
       case 'LEDGER':
-        // Hanya Admin
-        return user?.role === 'admin' ? <Ledger data={ledger} /> : null;
+        return <Ledger data={ledger} />;
       case 'REPORTS':
-        // Hanya Admin
-        return user?.role === 'admin' ? <Reports inventory={inventory} ledger={ledger} /> : null;
+        return <Reports inventory={inventory} ledger={ledger} />;
       default:
         return <POS inventory={inventory} refreshData={loadData} />;
     }
@@ -121,29 +124,6 @@ function App() {
         onLogout={handleLogout}
       />
       
-      {!isConnected && (
-        <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4" role="alert">
-          <div className="flex justify-between items-center">
-            <div>
-              <p className="font-bold">Mode Demo</p>
-              <p className="text-sm">Anda sedang menggunakan data dummy. 
-                {user.role === 'admin' 
-                  ? ' Klik ikon Gerigi di pojok kanan atas untuk menghubungkan Google Sheet.' 
-                  : ' Hubungi Admin untuk konfigurasi database.'}
-              </p>
-            </div>
-            {user.role === 'admin' && (
-              <button 
-                onClick={() => setIsSettingsOpen(true)}
-                className="bg-yellow-200 hover:bg-yellow-300 text-yellow-800 px-3 py-1 rounded text-sm font-semibold"
-              >
-                Hubungkan
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
       <main>
         {renderContent()}
       </main>
