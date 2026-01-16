@@ -2,7 +2,7 @@
 // 1. Buat Google Sheet baru.
 // 2. Buat 3 Tab (Sheet) dengan nama persis: "Barang", "Transaksi", "Kas".
 // 3. Header Kolom (Baris 1):
-//    - Barang: id, kode, nama, harga_beli, harga_jual, stok, kategori
+//    - Barang: id, kode, nama, harga_beli, harga_jual, stok, kategori, status_pemesanan
 //    - Transaksi: id, tanggal, item_json, total, tipe
 //    - Kas: id, tanggal, deskripsi, debit, kredit, kategori
 // 4. Deploy sebagai Web App:
@@ -50,12 +50,32 @@ function doPost(e) {
     if (action === 'ADD_PRODUCT') {
       const sheet = ss.getSheetByName('Barang');
       const id = Utilities.getUuid();
-      sheet.appendRow([id, payload.kode, payload.nama, payload.harga_beli, payload.harga_jual, payload.stok, payload.kategori]);
+      // Menambahkan status_pemesanan (default kosong)
+      sheet.appendRow([
+        id, 
+        payload.kode, 
+        payload.nama, 
+        payload.harga_beli, 
+        payload.harga_jual, 
+        payload.stok, 
+        payload.kategori,
+        payload.status_pemesanan || '' 
+      ]);
       result = { status: 'success', id: id };
       
     } else if (action === 'UPDATE_PRODUCT') {
       const sheet = ss.getSheetByName('Barang');
-      updateRow(sheet, payload.id, [payload.id, payload.kode, payload.nama, payload.harga_beli, payload.harga_jual, payload.stok, payload.kategori]);
+      // Update termasuk status_pemesanan
+      updateRow(sheet, payload.id, [
+        payload.id, 
+        payload.kode, 
+        payload.nama, 
+        payload.harga_beli, 
+        payload.harga_jual, 
+        payload.stok, 
+        payload.kategori,
+        payload.status_pemesanan || ''
+      ]);
       result = { status: 'success' };
 
     } else if (action === 'DELETE_PRODUCT') {

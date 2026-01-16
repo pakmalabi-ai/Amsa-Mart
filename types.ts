@@ -6,6 +6,7 @@ export interface Product {
   harga_jual: number;
   stok: number;
   kategori: string;
+  status_pemesanan?: string; // 'ordered' | '' | undefined
 }
 
 export interface CartItem extends Product {

@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Product } from '../types';
 import { Api } from '../services/api';
-import { Edit, Trash2, Plus, Save, X, Download, RefreshCw } from 'lucide-react';
+import { Edit, Trash2, Plus, Save, X, Download, RefreshCw, AlertTriangle, CheckCircle, Truck, AlertCircle } from 'lucide-react';
 import { exportToExcel } from '../utils/excelExport';
 
 interface InventoryProps {
@@ -22,6 +22,16 @@ const Inventory: React.FC<InventoryProps> = ({ data, refreshData }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Partial<Product> | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Reorder State
+  const [isReorderModalOpen, setIsReorderModalOpen] = useState(false);
+  const [reorderThreshold, setReorderThreshold] = useState(5);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState<string | null>(null);
+
+  // Filter Low Stock Items
+  const lowStockItems = useMemo(() => {
+    return data.filter(item => item.stok <= reorderThreshold);
+  }, [data, reorderThreshold]);
 
   // Fungsi untuk generate kode barang otomatis
   const generateNextCode = (categoryLabel: string): string => {
@@ -61,7 +71,8 @@ const Inventory: React.FC<InventoryProps> = ({ data, refreshData }) => {
       harga_beli: 0,
       harga_jual: 0,
       stok: 0,
-      kategori: defaultCategory
+      kategori: defaultCategory,
+      status_pemesanan: ''
     });
     setIsModalOpen(true);
   };
@@ -108,6 +119,21 @@ const Inventory: React.FC<InventoryProps> = ({ data, refreshData }) => {
     }
   };
 
+  const toggleReorderStatus = async (item: Product) => {
+    setIsUpdatingStatus(item.id);
+    try {
+      const newStatus = item.status_pemesanan === 'ordered' ? '' : 'ordered';
+      const updatedItem = { ...item, status_pemesanan: newStatus };
+      await Api.postData('UPDATE_PRODUCT', updatedItem);
+      refreshData();
+    } catch (error) {
+      console.error(error);
+      alert('Gagal update status pemesanan');
+    } finally {
+      setIsUpdatingStatus(null);
+    }
+  };
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
@@ -116,7 +142,25 @@ const Inventory: React.FC<InventoryProps> = ({ data, refreshData }) => {
            <p className="text-sm text-gray-500">Pantau dan kelola inventaris toko.</p>
         </div>
         
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 items-center">
+          {/* Reorder Button with Badge */}
+          <button 
+            onClick={() => setIsReorderModalOpen(true)}
+            className={`relative px-4 py-2 rounded-lg flex items-center gap-2 shadow transition-colors border ${
+              lowStockItems.length > 0 
+                ? 'bg-orange-100 text-orange-700 border-orange-200 hover:bg-orange-200' 
+                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            <AlertTriangle size={18} />
+            <span className="font-semibold text-sm">Cek Stok Menipis</span>
+            {lowStockItems.length > 0 && (
+              <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm animate-pulse">
+                {lowStockItems.length}
+              </span>
+            )}
+          </button>
+
           {/* Tombol Export Group */}
           <div className="flex bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
              <button onClick={() => handleExport('Harian')} className="px-3 py-2 text-xs font-medium hover:bg-gray-50 border-r">
@@ -150,6 +194,7 @@ const Inventory: React.FC<InventoryProps> = ({ data, refreshData }) => {
                 <th className="p-4 border-b text-right">Harga Beli</th>
                 <th className="p-4 border-b text-right">Harga Jual</th>
                 <th className="p-4 border-b text-center">Stok</th>
+                <th className="p-4 border-b text-center">Status</th>
                 <th className="p-4 border-b text-center">Aksi</th>
               </tr>
             </thead>
@@ -166,9 +211,16 @@ const Inventory: React.FC<InventoryProps> = ({ data, refreshData }) => {
                   <td className="p-4 text-sm text-right">Rp {item.harga_beli.toLocaleString()}</td>
                   <td className="p-4 text-sm text-right font-semibold text-green-600">Rp {item.harga_jual.toLocaleString()}</td>
                   <td className="p-4 text-center">
-                    <span className={`px-2 py-1 rounded text-xs font-bold ${item.stok < 5 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
+                    <span className={`px-2 py-1 rounded text-xs font-bold ${item.stok <= reorderThreshold ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
                       {item.stok}
                     </span>
+                  </td>
+                  <td className="p-4 text-center">
+                    {item.status_pemesanan === 'ordered' && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 bg-yellow-100 text-yellow-700 text-[10px] font-bold rounded-full uppercase">
+                        <Truck size={12} /> Dipesan
+                      </span>
+                    )}
                   </td>
                   <td className="p-4 flex justify-center space-x-2">
                     <button onClick={() => handleEdit(item)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"><Edit size={16} /></button>
@@ -181,6 +233,106 @@ const Inventory: React.FC<InventoryProps> = ({ data, refreshData }) => {
         </div>
       </div>
 
+      {/* Modal Reorder / Stok Menipis */}
+      {isReorderModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl h-[80vh] flex flex-col">
+            <div className="p-4 border-b bg-orange-50 rounded-t-xl flex justify-between items-center">
+              <div>
+                <h3 className="text-lg font-bold text-orange-800 flex items-center gap-2">
+                  <AlertCircle className="text-orange-600"/>
+                  Pesan Ulang Otomatis (Reorder)
+                </h3>
+                <p className="text-xs text-orange-600">Daftar barang dengan stok di bawah batas aman.</p>
+              </div>
+              <button onClick={() => setIsReorderModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={24} />
+              </button>
+            </div>
+            
+            {/* Konfigurasi Threshold */}
+            <div className="p-4 border-b bg-white flex items-center gap-4">
+              <label className="text-sm font-medium text-gray-700">Ambang Batas Stok:</label>
+              <input 
+                type="number" 
+                min="0"
+                value={reorderThreshold}
+                onChange={(e) => setReorderThreshold(Number(e.target.value))}
+                className="w-20 border border-gray-300 rounded p-1 text-center font-bold text-gray-800"
+              />
+              <span className="text-xs text-gray-500">(Tampilkan barang jika stok ≤ nilai ini)</span>
+            </div>
+
+            <div className="flex-1 overflow-auto p-4">
+              {lowStockItems.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-2">
+                  <CheckCircle size={48} className="text-green-500 opacity-50" />
+                  <p>Stok aman! Tidak ada barang yang perlu dipesan ulang.</p>
+                </div>
+              ) : (
+                <table className="w-full text-left border-collapse">
+                  <thead className="bg-gray-100 text-xs uppercase text-gray-600 sticky top-0">
+                    <tr>
+                      <th className="p-3 border-b">Barang</th>
+                      <th className="p-3 border-b text-center">Sisa Stok</th>
+                      <th className="p-3 border-b text-right">Harga Beli</th>
+                      <th className="p-3 border-b text-center">Status</th>
+                      <th className="p-3 border-b text-center">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 text-sm">
+                    {lowStockItems.map(item => (
+                      <tr key={item.id} className="hover:bg-gray-50">
+                        <td className="p-3 font-medium text-gray-800">
+                          {item.nama}
+                          <div className="text-xs text-gray-400 font-mono">{item.kode}</div>
+                        </td>
+                        <td className="p-3 text-center">
+                          <span className="font-bold text-red-600">{item.stok}</span>
+                        </td>
+                        <td className="p-3 text-right">Rp {item.harga_beli.toLocaleString()}</td>
+                        <td className="p-3 text-center">
+                           {item.status_pemesanan === 'ordered' ? (
+                             <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-bold">Sudah Dipesan</span>
+                           ) : (
+                             <span className="text-xs bg-gray-100 text-gray-500 px-2 py-1 rounded-full">Perlu Dipesan</span>
+                           )}
+                        </td>
+                        <td className="p-3 text-center">
+                          <button 
+                            disabled={isUpdatingStatus === item.id}
+                            onClick={() => toggleReorderStatus(item)}
+                            className={`px-3 py-1.5 rounded text-xs font-bold transition-all shadow-sm flex items-center gap-1 mx-auto ${
+                              item.status_pemesanan === 'ordered'
+                              ? 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                              : 'bg-blue-600 text-white hover:bg-blue-700'
+                            }`}
+                          >
+                            {isUpdatingStatus === item.id ? 'Loading...' : (
+                               item.status_pemesanan === 'ordered' ? 'Batal Pesan' : 'Tandai Pesan'
+                            )}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            
+            <div className="p-4 border-t bg-gray-50 flex justify-end">
+               <button 
+                 onClick={() => exportToExcel(lowStockItems, `Daftar_Belanja_Stok_${new Date().toISOString().split('T')[0]}`)}
+                 className="flex items-center gap-2 text-green-700 font-medium hover:text-green-800 px-4 py-2 border border-green-200 rounded-lg bg-white shadow-sm"
+               >
+                 <Download size={18} /> Download Daftar Belanja (Excel)
+               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Add/Edit Product */}
       {isModalOpen && editingItem && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
