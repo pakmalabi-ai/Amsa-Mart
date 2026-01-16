@@ -578,6 +578,7 @@ const Inventory: React.FC<InventoryProps> = ({ data, refreshData }) => {
                     value={editingItem.stok} 
                     onChange={e => setEditingItem({...editingItem, stok: Number(e.target.value)})} 
                   />
+                  {!editingItem.id && <p className="text-[10px] text-orange-600 mt-1">Stok awal akan dicatat sbg Pengeluaran.</p>}
                 </div>
               </div>
 
