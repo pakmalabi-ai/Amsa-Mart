@@ -6,9 +6,10 @@ import { Api } from '../services/api';
 
 interface LedgerProps {
   data: LedgerEntry[];
+  refreshData: () => void;
 }
 
-const Ledger: React.FC<LedgerProps> = ({ data }) => {
+const Ledger: React.FC<LedgerProps> = ({ data, refreshData }) => {
   // State Filter Bulan
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM
   
@@ -54,14 +55,22 @@ const Ledger: React.FC<LedgerProps> = ({ data }) => {
       alert('Modal berhasil ditambahkan!');
       setIsCapitalModalOpen(false);
       setCapitalAmount('');
-      // Kita perlu reload halaman atau trigger refresh dari parent, 
-      // tapi untuk simplifikasi UX di sini kita reload window agar data fresh
-      window.location.reload(); 
+      refreshData(); // Refresh data tanpa reload page
     } catch (error) {
       alert('Gagal menyimpan modal');
       console.error(error);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const getCategoryBadgeClass = (kategori: string) => {
+    switch (kategori) {
+      case 'Modal': return 'bg-blue-100 text-blue-700 border border-blue-200';
+      case 'Penjualan': return 'bg-green-100 text-green-700 border border-green-200';
+      case 'Belanja Stok': return 'bg-orange-100 text-orange-700 border border-orange-200';
+      case 'Prive': return 'bg-purple-100 text-purple-700 border border-purple-200'; // Highlight khusus Prive
+      default: return 'bg-gray-100 text-gray-600';
     }
   };
 
@@ -147,7 +156,7 @@ const Ledger: React.FC<LedgerProps> = ({ data }) => {
                       {new Date(row.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'})}
                     </td>
                     <td className="p-4 text-sm">
-                      <span className={`px-2 py-1 rounded-full text-xs ${row.kategori === 'Modal' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getCategoryBadgeClass(row.kategori)}`}>
                         {row.kategori}
                       </span>
                     </td>

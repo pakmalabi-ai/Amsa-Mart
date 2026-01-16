@@ -101,9 +101,9 @@ function App() {
       case 'INVENTORY':
         return <Inventory data={inventory} refreshData={loadData} />;
       case 'LEDGER':
-        return <Ledger data={ledger} />;
+        return <Ledger data={ledger} refreshData={loadData} />;
       case 'REPORTS':
-        return <Reports inventory={inventory} ledger={ledger} />;
+        return <Reports inventory={inventory} ledger={ledger} refreshData={loadData} />;
       default:
         return <POS inventory={inventory} refreshData={loadData} />;
     }

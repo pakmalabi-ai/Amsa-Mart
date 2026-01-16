@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
 import { Product, LedgerEntry } from '../types';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from 'recharts';
-import { Download, Calendar, Wallet, CheckCircle, X } from 'lucide-react';
+import { Download, Calendar, Wallet, CheckCircle, X, ArrowRight } from 'lucide-react';
 import { exportToExcel } from '../utils/excelExport';
 import { Api } from '../services/api';
 
 interface ReportsProps {
   inventory: Product[];
   ledger: LedgerEntry[];
+  refreshData: () => void;
 }
 
-const Reports: React.FC<ReportsProps> = ({ inventory, ledger }) => {
+const Reports: React.FC<ReportsProps> = ({ inventory, ledger, refreshData }) => {
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7));
   
   // State Modal Ambil Laba
@@ -47,6 +48,9 @@ const Reports: React.FC<ReportsProps> = ({ inventory, ledger }) => {
     .reduce((sum, l) => sum + l.kredit, 0);
 
   const labaBersih = omsetPenjualan - belanjaStok - biayaOperasional;
+  
+  // Sisa Laba setelah diambil prive
+  const sisaLabaDitahan = labaBersih - prive;
 
   // Chart Data: Komposisi Aset
   const assetData = [
@@ -62,6 +66,7 @@ const Reports: React.FC<ReportsProps> = ({ inventory, ledger }) => {
       { Item: 'Biaya Operasional', Nilai: -biayaOperasional },
       { Item: 'LABA BERSIH (Sebelum Prive)', Nilai: labaBersih },
       { Item: 'Pengambilan Prive', Nilai: -prive },
+      { Item: 'SISA LABA DITAHAN', Nilai: sisaLabaDitahan },
       { Item: '---', Nilai: '---' },
       { Item: 'Total Aset Stok (Saat Ini)', Nilai: nilaiAsetStok },
       { Item: 'Total Kas (Saat Ini)', Nilai: kasTotal },
@@ -79,7 +84,7 @@ const Reports: React.FC<ReportsProps> = ({ inventory, ledger }) => {
       return;
     }
 
-    if (!confirm(`Konfirmasi pengambilan laba sebesar Rp ${amount.toLocaleString()}?\n(Akan tercatat sebagai pengeluaran di Buku Kas)`)) return;
+    if (!confirm(`Konfirmasi pengambilan laba sebesar Rp ${amount.toLocaleString()}?\n(Akan tercatat sebagai pengeluaran di Buku Kas kategori 'Prive')`)) return;
 
     setIsProcessing(true);
     try {
@@ -90,7 +95,7 @@ const Reports: React.FC<ReportsProps> = ({ inventory, ledger }) => {
       alert("Pengambilan laba berhasil dicatat.");
       setIsProfitModalOpen(false);
       setWithdrawAmount('');
-      window.location.reload(); // Reload untuk update data
+      refreshData();
     } catch (error) {
       alert("Gagal memproses transaksi.");
       console.error(error);
@@ -162,7 +167,7 @@ const Reports: React.FC<ReportsProps> = ({ inventory, ledger }) => {
                   </p>
                 </div>
                 
-                {/* Tombol Ambil Laba hanya muncul jika ada laba */}
+                {/* Tombol Ambil Laba hanya muncul jika ada laba positif */}
                 {labaBersih > 0 && (
                    <button 
                      onClick={() => setIsProfitModalOpen(true)}
@@ -174,12 +179,23 @@ const Reports: React.FC<ReportsProps> = ({ inventory, ledger }) => {
               </div>
             </div>
 
-            {/* Info Prive */}
-            {prive > 0 && (
-              <div className="text-xs text-gray-500 text-right mt-2 border-t pt-2 border-dashed">
-                Telah diambil (Prive): Rp {prive.toLocaleString()}
-              </div>
-            )}
+            {/* Integrasi Prive & Sisa Laba */}
+            <div className="border-t border-dashed border-gray-300 pt-3 mt-2 space-y-2">
+               <div className="flex justify-between text-sm items-center">
+                  <span className="text-gray-500 flex items-center gap-1"><ArrowRight size={12}/> Dikurangi: Ambil Laba (Prive)</span>
+                  <span className="font-mono text-orange-600 font-medium">
+                     {prive > 0 ? `- Rp ${prive.toLocaleString()}` : 'Rp 0'}
+                  </span>
+               </div>
+               
+               <div className="bg-gray-100 p-2 rounded flex justify-between items-center">
+                  <span className="font-bold text-gray-700 text-sm">Sisa Laba Ditahan</span>
+                  <span className={`font-bold ${sisaLabaDitahan >= 0 ? 'text-gray-800' : 'text-red-600'}`}>
+                     Rp {sisaLabaDitahan.toLocaleString()}
+                  </span>
+               </div>
+            </div>
+
           </div>
         </div>
 

@@ -3,7 +3,7 @@
 // 2. Buat 3 Tab (Sheet) dengan nama persis: "Barang", "Transaksi", "Kas".
 // 3. Header Kolom (Baris 1):
 //    - Barang: id, kode, nama, harga_beli, harga_jual, stok, kategori, status_pemesanan
-//    - Transaksi: id, tanggal, item_json, total, tipe
+//    - Transaksi: id, tanggal, item_json, total, tipe, metode_pembayaran
 //    - Kas: id, tanggal, deskripsi, debit, kredit, kategori
 // 4. Deploy sebagai Web App:
 //    - Execute as: Me (saya)
@@ -129,7 +129,15 @@ function doPost(e) {
       // Ambil metode pembayaran, default ke Tunai jika tidak ada
       const paymentType = payload.paymentMethod || 'Tunai';
       
-      tSheet.appendRow([tId, date, JSON.stringify(payload.items), payload.total, paymentType]);
+      // PERUBAHAN: Menambahkan 'Penjualan' sebagai tipe, dan paymentType sebagai metode_pembayaran
+      tSheet.appendRow([
+        tId, 
+        date, 
+        JSON.stringify(payload.items), 
+        payload.total, 
+        'Penjualan', // Kolom Tipe
+        paymentType  // Kolom Metode Pembayaran
+      ]);
 
       // 2. Kurangi Stok
       const iSheet = ss.getSheetByName('Barang');

@@ -216,13 +216,19 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
   };
 
   const handleExportDaily = () => {
-    const dataToExport = dailyTransactions.map(t => ({
-      ID: t.id,
-      Tanggal: new Date(t.tanggal).toLocaleString('id-ID'),
-      Detail_Item: t.item_json,
-      Total: t.total,
-      Tipe: t.tipe
-    }));
+    const dataToExport = dailyTransactions.map(t => {
+      // Backward compatibility: Jika metode_pembayaran tidak ada (data lama), gunakan t.tipe
+      const metode = t.metode_pembayaran || t.tipe;
+      
+      return {
+        ID: t.id,
+        Tanggal: new Date(t.tanggal).toLocaleString('id-ID'),
+        Detail_Item: t.item_json,
+        Total: t.total,
+        Tipe_Transaksi: 'Penjualan',
+        Metode_Pembayaran: metode
+      };
+    });
     exportToExcel(dataToExport, `Laporan_Harian_POS_${new Date().toISOString().split('T')[0]}`);
   };
 
@@ -627,18 +633,23 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-sm">
-                    {dailyTransactions.map(t => (
-                      <tr key={t.id} className="hover:bg-gray-50">
-                        <td className="p-3">{new Date(t.tanggal).toLocaleTimeString('id-ID')}</td>
-                        <td className="p-3 max-w-md truncate text-gray-600">{t.item_json}</td>
-                        <td className="p-3 text-center text-xs">
-                          <span className={`px-2 py-1 rounded ${t.tipe === 'QRIS' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
-                            {t.tipe}
-                          </span>
-                        </td>
-                        <td className="p-3 text-right font-bold text-gray-800">Rp {t.total.toLocaleString()}</td>
-                      </tr>
-                    ))}
+                    {dailyTransactions.map(t => {
+                      // Logic Backward Compatibility untuk data lama vs baru
+                      const metode = t.metode_pembayaran || t.tipe;
+                      
+                      return (
+                        <tr key={t.id} className="hover:bg-gray-50">
+                          <td className="p-3">{new Date(t.tanggal).toLocaleTimeString('id-ID')}</td>
+                          <td className="p-3 max-w-md truncate text-gray-600">{t.item_json}</td>
+                          <td className="p-3 text-center text-xs">
+                            <span className={`px-2 py-1 rounded ${metode === 'QRIS' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                              {metode}
+                            </span>
+                          </td>
+                          <td className="p-3 text-right font-bold text-gray-800">Rp {t.total.toLocaleString()}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                   <tfoot className="bg-gray-50 font-bold">
                     <tr>

@@ -28,6 +28,7 @@ export interface Transaction {
   item_json: string;
   total: number;
   tipe: string;
+  metode_pembayaran?: string; // Kolom baru untuk Tunai / QRIS
 }
 
 export type ViewState = 'POS' | 'INVENTORY' | 'LEDGER' | 'REPORTS';

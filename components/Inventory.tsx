@@ -194,6 +194,15 @@ const Inventory: React.FC<InventoryProps> = ({ data, refreshData }) => {
         </div>
         
         <div className="flex flex-wrap gap-2 items-center">
+          {/* Tombol Export */}
+          <button 
+            onClick={() => handleExport('Harian')}
+            className="bg-white text-green-700 border border-green-200 hover:bg-green-50 px-4 py-2 rounded-lg flex items-center gap-2 shadow"
+            title="Download Data Stok Excel"
+          >
+            <Download size={18} /> <span className="hidden sm:inline">Export</span>
+          </button>
+
           {/* Reorder Button with Badge */}
           <button 
             onClick={() => setIsReorderModalOpen(true)}
