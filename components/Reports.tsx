@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Product, LedgerEntry } from '../types';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from 'recharts';
-import { Download, Calendar, Wallet, CheckCircle, X, ArrowRight, TrendingUp, Package, DollarSign, Activity } from 'lucide-react';
+import { Download, Calendar, Wallet, CheckCircle, X, ArrowRight, Package, DollarSign, Activity } from 'lucide-react';
 import { exportToExcel } from '../utils/excelExport';
 import { Api } from '../services/api';
 
