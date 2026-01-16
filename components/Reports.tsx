@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Product, LedgerEntry } from '../types';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from 'recharts';
-import { Download, Calendar, Wallet, CheckCircle, X, ArrowRight } from 'lucide-react';
+import { Download, Calendar, Wallet, CheckCircle, X, ArrowRight, TrendingUp, Package } from 'lucide-react';
 import { exportToExcel } from '../utils/excelExport';
 import { Api } from '../services/api';
 
@@ -22,10 +22,10 @@ const Reports: React.FC<ReportsProps> = ({ inventory, ledger, refreshData }) => 
   // Filter Data Ledger per bulan untuk Laba Rugi
   const monthlyLedger = ledger.filter(l => l.tanggal.startsWith(selectedMonth));
 
-  // Perhitungan Aset Stok (Snapshot Saat Ini - tidak terpengaruh filter bulan)
+  // Perhitungan Aset Stok (Snapshot Saat Ini - Harga Beli)
   const nilaiAsetStok = inventory.reduce((sum, item) => sum + (item.harga_beli * item.stok), 0);
   
-  // Perhitungan Kas Total (Akumulatif - tidak terpengaruh filter bulan, kecuali kita mau saldo awal)
+  // Perhitungan Kas Total (Akumulatif - tidak terpengaruh filter bulan)
   const kasTotal = ledger.reduce((sum, item) => sum + (item.debit || 0) - (item.kredit || 0), 0);
   
   // --- Perhitungan Laporan Laba Rugi Bulanan ---
@@ -37,20 +37,28 @@ const Reports: React.FC<ReportsProps> = ({ inventory, ledger, refreshData }) => 
     .filter(l => l.kategori === 'Belanja Stok')
     .reduce((sum, l) => sum + (l.kredit || 0), 0);
 
-  // Biaya Operasional (Exclude 'Belanja Stok' dan 'Prive' agar Laba Bersih mencerminkan performa toko)
+  // Biaya Operasional (Exclude 'Belanja Stok' dan 'Prive')
   const biayaOperasional = monthlyLedger
     .filter(l => l.kredit > 0 && l.kategori !== 'Belanja Stok' && l.kategori !== 'Prive')
     .reduce((sum, l) => sum + l.kredit, 0);
 
-  // Prive (Pengambilan Pribadi) - Untuk informasi saja, tidak mengurangi Laba Bersih di laporan Laba Rugi Toko
+  // Prive (Pengambilan Pribadi)
   const prive = monthlyLedger
     .filter(l => l.kategori === 'Prive')
     .reduce((sum, l) => sum + l.kredit, 0);
 
-  const labaBersih = omsetPenjualan - belanjaStok - biayaOperasional;
+  // Laba Bersih secara Cashflow (Uang Masuk - Uang Keluar)
+  const labaBersihCashflow = omsetPenjualan - belanjaStok - biayaOperasional;
   
   // Sisa Laba setelah diambil prive
-  const sisaLabaDitahan = labaBersih - prive;
+  const sisaLabaDitahan = labaBersihCashflow - prive;
+
+  // --- Perhitungan Laba Riil (Memperhitungkan Stok sebagai Aset, bukan hangus) ---
+  // Logika: Profit Cashflow memang minus jika belanja stok banyak. 
+  // Tapi stok itu adalah uang yang berubah bentuk.
+  // Laba Riil = Laba Cashflow + Nilai Aset Stok yang Tersedia
+  // *Catatan: Ini adalah estimasi performa aset + cash
+  const labaRiilEstimasi = labaBersihCashflow + nilaiAsetStok;
 
   // Chart Data: Komposisi Aset
   const assetData = [
@@ -62,14 +70,15 @@ const Reports: React.FC<ReportsProps> = ({ inventory, ledger, refreshData }) => 
     const dataExport = [
       { Item: 'Periode', Nilai: selectedMonth },
       { Item: 'Omset Penjualan', Nilai: omsetPenjualan },
-      { Item: 'Belanja Stok', Nilai: -belanjaStok },
+      { Item: 'Belanja Stok (Cash Out)', Nilai: -belanjaStok },
       { Item: 'Biaya Operasional', Nilai: -biayaOperasional },
-      { Item: 'LABA BERSIH (Sebelum Prive)', Nilai: labaBersih },
-      { Item: 'Pengambilan Prive', Nilai: -prive },
-      { Item: 'SISA LABA DITAHAN', Nilai: sisaLabaDitahan },
+      { Item: 'LABA BERSIH (Metode Cashflow)', Nilai: labaBersihCashflow },
       { Item: '---', Nilai: '---' },
-      { Item: 'Total Aset Stok (Saat Ini)', Nilai: nilaiAsetStok },
-      { Item: 'Total Kas (Saat Ini)', Nilai: kasTotal },
+      { Item: 'Nilai Aset Stok (Barang Tersedia)', Nilai: nilaiAsetStok },
+      { Item: 'ESTIMASI LABA RIIL (Cash + Aset)', Nilai: labaRiilEstimasi },
+      { Item: '---', Nilai: '---' },
+      { Item: 'Pengambilan Prive', Nilai: -prive },
+      { Item: 'SISA KAS DITAHAN', Nilai: sisaLabaDitahan },
     ];
     exportToExcel(dataExport, `Laporan_Keuangan_${selectedMonth}`);
   };
@@ -147,7 +156,7 @@ const Reports: React.FC<ReportsProps> = ({ inventory, ledger, refreshData }) => 
 
             <div className="relative pl-8 space-y-3 border-l-2 border-gray-200 ml-4">
               <div className="flex justify-between text-sm text-gray-600">
-                <span>(-) Pembelian Stok Barang</span>
+                <span>(-) Belanja Stok (Cashflow)</span>
                 <span className="font-mono text-red-500">Rp {belanjaStok.toLocaleString()}</span>
               </div>
               <div className="flex justify-between text-sm text-gray-600">
@@ -156,42 +165,69 @@ const Reports: React.FC<ReportsProps> = ({ inventory, ledger, refreshData }) => 
               </div>
             </div>
 
-            <div className={`p-4 rounded-lg flex flex-col gap-2 ${labaBersih >= 0 ? 'bg-blue-50' : 'bg-red-50'}`}>
+            {/* HASIL CASHFLOW */}
+            <div className={`p-4 rounded-lg flex flex-col gap-2 border ${labaBersihCashflow >= 0 ? 'bg-gray-50 border-gray-200' : 'bg-red-50 border-red-100'}`}>
               <div className="flex justify-between items-center w-full">
                 <div>
-                  <p className={`text-xs uppercase font-bold ${labaBersih >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
-                    {labaBersih >= 0 ? 'Laba Bersih' : 'Rugi'}
+                  <p className="text-xs uppercase font-bold text-gray-500">
+                    Laba Bersih (Cashflow)
                   </p>
-                  <p className={`text-2xl font-bold ${labaBersih >= 0 ? 'text-blue-700' : 'text-red-700'}`}>
-                    Rp {labaBersih.toLocaleString()}
+                  <p className={`text-xl font-bold ${labaBersihCashflow >= 0 ? 'text-gray-700' : 'text-red-600'}`}>
+                    Rp {labaBersihCashflow.toLocaleString()}
                   </p>
                 </div>
-                
-                {/* Tombol Ambil Laba hanya muncul jika ada laba positif */}
-                {labaBersih > 0 && (
-                   <button 
-                     onClick={() => setIsProfitModalOpen(true)}
-                     className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg text-xs font-bold shadow flex items-center gap-1 transition-transform active:scale-95"
-                   >
-                     <Wallet size={16} /> Ambil Laba
-                   </button>
-                )}
+              </div>
+            </div>
+
+            {/* PERHITUNGAN BARU: LABA RIIL (DENGAN STOK) */}
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                <div className="w-full border-t border-gray-300 border-dashed" />
+              </div>
+              <div className="relative flex justify-center">
+                <span className="bg-white px-2 text-xs text-gray-500 font-medium">Analisa Keuntungan Riil</span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex justify-between items-center text-sm text-blue-600 px-2">
+                 <span className="flex items-center gap-1"><Package size={14}/> (+) Nilai Aset Stok Tersedia</span>
+                 <span className="font-bold">Rp {nilaiAsetStok.toLocaleString()}</span>
+              </div>
+              
+              <div className={`p-4 rounded-lg flex flex-col gap-2 shadow-sm ${labaRiilEstimasi >= 0 ? 'bg-blue-600 text-white' : 'bg-red-600 text-white'}`}>
+                <div className="flex justify-between items-center w-full">
+                  <div>
+                    <p className="text-xs uppercase font-bold opacity-80 flex items-center gap-1">
+                      <TrendingUp size={14}/> Estimasi Laba Riil (Cash + Aset)
+                    </p>
+                    <p className="text-2xl font-bold mt-1">
+                      Rp {labaRiilEstimasi.toLocaleString()}
+                    </p>
+                  </div>
+                  
+                  {/* Tombol Ambil Laba */}
+                  {labaBersihCashflow > 0 && (
+                     <button 
+                       onClick={() => setIsProfitModalOpen(true)}
+                       className="bg-white text-blue-700 hover:bg-blue-50 px-3 py-2 rounded-lg text-xs font-bold shadow flex items-center gap-1 transition-transform active:scale-95"
+                     >
+                       <Wallet size={16} /> Ambil Laba
+                     </button>
+                  )}
+                </div>
+                <p className="text-[10px] opacity-70 italic">
+                  *Keuntungan yang sebenarnya jika memperhitungkan stok barang sebagai uang/aset.
+                </p>
               </div>
             </div>
 
             {/* Integrasi Prive & Sisa Laba */}
-            <div className="border-t border-dashed border-gray-300 pt-3 mt-2 space-y-2">
+            <div className="border-t border-gray-200 pt-3 mt-2 space-y-2">
                <div className="flex justify-between text-sm items-center">
                   <span className="text-gray-500 flex items-center gap-1"><ArrowRight size={12}/> Dikurangi: Ambil Laba (Prive)</span>
                   <span className="font-mono text-orange-600 font-medium">
                      {prive > 0 ? `- Rp ${prive.toLocaleString()}` : 'Rp 0'}
-                  </span>
-               </div>
-               
-               <div className="bg-gray-100 p-2 rounded flex justify-between items-center">
-                  <span className="font-bold text-gray-700 text-sm">Sisa Laba Ditahan</span>
-                  <span className={`font-bold ${sisaLabaDitahan >= 0 ? 'text-gray-800' : 'text-red-600'}`}>
-                     Rp {sisaLabaDitahan.toLocaleString()}
                   </span>
                </div>
             </div>
@@ -225,12 +261,13 @@ const Reports: React.FC<ReportsProps> = ({ inventory, ledger, refreshData }) => 
           </div>
           <div className="mt-4 space-y-2">
             <div className="flex justify-between text-lg font-bold border-t pt-2 mt-2">
-              <span>Total Aset (Kas + Stok)</span>
+              <span>Total Nilai Toko (Kas + Stok)</span>
               <span className="text-blue-600">Rp {(kasTotal + nilaiAsetStok).toLocaleString()}</span>
             </div>
-            <p className="text-xs text-gray-400 text-center mt-2">
-              * Grafik menunjukkan posisi keuangan akumulatif real-time.
-            </p>
+            <div className="bg-yellow-50 p-3 rounded text-xs text-yellow-800 mt-4 border border-yellow-100">
+              <strong>Info:</strong> Grafik ini menunjukkan kekayaan toko saat ini. 
+              Meskipun "Laba Cashflow" mungkin minus karena belanja stok, kekayaan toko tetap bertambah dalam bentuk barang (warna hijau).
+            </div>
           </div>
         </div>
       </div>
@@ -249,8 +286,8 @@ const Reports: React.FC<ReportsProps> = ({ inventory, ledger, refreshData }) => 
             <form onSubmit={handleWithdrawProfit} className="p-6 space-y-4">
               <div className="bg-gray-50 p-3 rounded-lg text-sm text-gray-600 mb-2">
                 <div className="flex justify-between mb-1">
-                   <span>Laba Bersih Bulan Ini:</span>
-                   <span className="font-bold text-blue-600">Rp {labaBersih.toLocaleString()}</span>
+                   <span>Laba Bersih (Cash) Bulan Ini:</span>
+                   <span className="font-bold text-blue-600">Rp {labaBersihCashflow.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between border-t border-gray-200 pt-1">
                    <span>Saldo Kas Tersedia:</span>
@@ -277,7 +314,7 @@ const Reports: React.FC<ReportsProps> = ({ inventory, ledger, refreshData }) => 
 
               <div className="text-xs text-orange-600 flex items-start gap-1">
                 <div className="mt-0.5"><CheckCircle size={12} /></div>
-                <span>Transaksi ini akan dicatat sebagai Pengeluaran (Kredit) di Buku Kas dengan kategori 'Prive'.</span>
+                <span>Transaksi ini akan dicatat sebagai Pengeluaran (Kredit) di Buku Kas dengan kategori 'Prive'. Pastikan hanya mengambil dari uang tunai yang tersedia.</span>
               </div>
 
               <button 
