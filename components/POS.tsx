@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Product, CartItem, Transaction } from '../types';
-import { Search, Plus, Minus, Trash2, ShoppingBag, FileText, Download, X, Banknote, CreditCard, Printer } from 'lucide-react';
+import { Search, Plus, Minus, Trash2, ShoppingBag, FileText, Download, X, Banknote, CreditCard, Printer, RotateCcw } from 'lucide-react';
 import { Api } from '../services/api';
 import { exportToExcel } from '../utils/excelExport';
 
@@ -130,6 +130,12 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
     }
   };
 
+  const handleReprint = () => {
+    if (lastTransaction) {
+      window.print();
+    }
+  };
+
   const openDailyReport = async () => {
     setIsReportOpen(true);
     setLoadingReport(true);
@@ -165,26 +171,55 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
       {/* CSS Khusus Print (Struk) */}
       <style>{`
         @media print {
+          @page {
+            size: 80mm auto; /* Lebar kertas thermal standar 80mm */
+            margin: 0;
+          }
           body * {
             visibility: hidden;
+            height: 0;
+            overflow: hidden;
           }
           #printable-receipt, #printable-receipt * {
             visibility: visible;
+            height: auto;
+            overflow: visible;
           }
           #printable-receipt {
             position: absolute;
             left: 0;
             top: 0;
-            width: 80mm; /* Standar lebar kertas thermal */
-            padding: 10px;
+            width: 78mm; /* Sedikit kurang dari 80mm untuk margin aman */
+            padding: 2mm 4mm;
             background-color: white;
             color: black;
-            font-family: 'Courier New', Courier, monospace;
+            font-family: 'Courier New', Courier, monospace; /* Font monospaced seperti struk */
             font-size: 12px;
+            line-height: 1.2;
           }
-          @page {
-            margin: 0;
-            size: auto;
+          .receipt-divider {
+            border-top: 1px dashed black;
+            margin: 5px 0;
+          }
+          .receipt-header {
+            text-align: center;
+            margin-bottom: 10px;
+          }
+          .receipt-title {
+            font-size: 16px;
+            font-weight: bold;
+          }
+          .receipt-item {
+            display: flex;
+            justify-content: space-between;
+          }
+          .receipt-footer {
+            text-align: center;
+            margin-top: 10px;
+            font-size: 10px;
+          }
+          .font-bold {
+            font-weight: bold;
           }
         }
       `}</style>
@@ -192,51 +227,65 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
       {/* Komponen Struk Tersembunyi (Hanya muncul saat print) */}
       <div id="printable-receipt" className="hidden print:block">
         {lastTransaction && (
-          <div className="flex flex-col w-full">
-            <div className="text-center mb-2">
-              <h2 className="font-bold text-lg">AMSA MART</h2>
-              <p className="text-xs">Jl. Contoh No. 123, Kota Anda</p>
-              <p className="text-xs">================================</p>
+          <div className="w-full">
+            <div className="receipt-header">
+              <div className="receipt-title">AMSA MART</div>
+              <div>Jl. Merdeka No. 45, Jakarta</div>
+              <div>Telp: 021-555-0123</div>
             </div>
             
-            <div className="mb-2">
-              <p>Tgl: {lastTransaction.date}</p>
-              <p>No: {lastTransaction.id.substring(0, 10)}...</p>
+            <div className="receipt-divider"></div>
+            
+            <div className="flex justify-between">
+              <span>{lastTransaction.date.split(' ')[0]}</span>
+              <span>{lastTransaction.date.split(' ')[1]}</span>
             </div>
+            <div>No: {lastTransaction.id.substring(0, 12)}</div>
+            <div>Kasir: Admin</div>
             
-            <p className="text-xs mb-2">--------------------------------</p>
+            <div className="receipt-divider"></div>
             
-            <div className="space-y-1 mb-2">
+            <div className="space-y-1">
               {lastTransaction.items.map((item, idx) => (
-                <div key={idx} className="flex justify-between">
-                  <span>{item.nama.substring(0, 15)} x{item.qty}</span>
-                  <span>{(item.harga_jual * item.qty).toLocaleString()}</span>
+                <div key={idx}>
+                  <div>{item.nama}</div>
+                  <div className="receipt-item">
+                    <span>{item.qty} x {item.harga_jual.toLocaleString()}</span>
+                    <span>{(item.harga_jual * item.qty).toLocaleString()}</span>
+                  </div>
                 </div>
               ))}
             </div>
 
-            <p className="text-xs mb-2">--------------------------------</p>
+            <div className="receipt-divider"></div>
 
-            <div className="flex justify-between font-bold">
+            <div className="receipt-item font-bold" style={{ fontSize: '14px' }}>
               <span>TOTAL</span>
               <span>Rp {lastTransaction.total.toLocaleString()}</span>
             </div>
-            <div className="flex justify-between text-xs mt-1">
-              <span>Metode</span>
+            
+            <div className="receipt-divider"></div>
+
+            <div className="receipt-item">
+              <span>Metode Bayar</span>
               <span>{lastTransaction.paymentMethod}</span>
             </div>
-            <div className="flex justify-between text-xs">
+            <div className="receipt-item">
               <span>Bayar</span>
               <span>Rp {lastTransaction.cash.toLocaleString()}</span>
             </div>
-            <div className="flex justify-between text-xs">
+            <div className="receipt-item">
               <span>Kembali</span>
               <span>Rp {lastTransaction.change.toLocaleString()}</span>
             </div>
 
-            <p className="text-xs mt-4 mb-1">================================</p>
-            <p className="text-center text-xs">Terima Kasih</p>
-            <p className="text-center text-xs">Barang yang dibeli tidak dapat ditukar</p>
+            <div className="receipt-divider"></div>
+            
+            <div className="receipt-footer">
+              <p>Terima Kasih atas kunjungan Anda</p>
+              <p>Barang yang dibeli tidak dapat ditukar</p>
+              <p>*** LUNAS ***</p>
+            </div>
           </div>
         )}
       </div>
@@ -307,8 +356,6 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
                   <h4 className="font-medium text-sm text-gray-800">{item.nama}</h4>
                   <div className="flex items-center gap-2 text-xs text-gray-500">
                     <span>@ Rp {item.harga_jual.toLocaleString()}</span>
-                    {/* Opsional: Menampilkan sisa stok gudang di cart item jika diinginkan interpretasi 'stok barang di keranjang' */}
-                    {/* <span className="text-gray-400">| Sisa: {item.stok}</span> */}
                   </div>
                 </div>
                 <div className="flex items-center space-x-2">
@@ -334,6 +381,16 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
             <span className="text-gray-600">Total Belanja</span>
             <span className="font-bold text-xl text-blue-600">Rp {totalAmount.toLocaleString()}</span>
           </div>
+
+          {/* Tombol Cetak Ulang (Jika ada transaksi terakhir) */}
+          {lastTransaction && cart.length === 0 && (
+             <button 
+               onClick={handleReprint}
+               className="w-full py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded border border-gray-300 flex items-center justify-center gap-2 text-sm"
+             >
+               <RotateCcw size={14} /> Cetak Struk Terakhir / Simpan PDF
+             </button>
+          )}
 
           {/* Pilihan Metode Pembayaran */}
           <div className="grid grid-cols-2 gap-2">
