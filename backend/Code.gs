@@ -1,10 +1,11 @@
 // KONFIGURASI SCRIPT
 // 1. Buat Google Sheet baru.
-// 2. Buat 3 Tab (Sheet) dengan nama persis: "Barang", "Transaksi", "Kas".
+// 2. Buat 4 Tab (Sheet) dengan nama persis: "Barang", "Transaksi", "Kas", "Users".
 // 3. Header Kolom (Baris 1):
 //    - Barang: id, kode, nama, harga_beli, harga_jual, stok, kategori, status_pemesanan
 //    - Transaksi: id, tanggal, item_json, total, tipe, metode_pembayaran
 //    - Kas: id, tanggal, deskripsi, debit, kredit, kategori
+//    - Users: username, password, role
 // 4. Deploy sebagai Web App:
 //    - Execute as: Me (saya)
 //    - Who has access: Anyone (Siapa saja)
@@ -47,7 +48,40 @@ function doPost(e) {
     const action = data.action;
     const payload = data.payload;
 
-    if (action === 'ADD_PRODUCT') {
+    if (action === 'LOGIN') {
+      // LOGIKA LOGIN DARI SHEET USERS
+      const uSheet = ss.getSheetByName('Users');
+      if (!uSheet) {
+        throw new Error("Sheet 'Users' tidak ditemukan. Buat tab 'Users' dulu.");
+      }
+      
+      const usersData = uSheet.getDataRange().getValues(); // [username, password, role]
+      // Skip header (i=1)
+      let foundUser = null;
+      
+      const inputUser = String(payload.username).trim().toLowerCase();
+      const inputPass = String(payload.password).trim(); // Ini adalah Hash dari frontend
+
+      for (let i = 1; i < usersData.length; i++) {
+        const dbUser = String(usersData[i][0]).trim().toLowerCase();
+        const dbPass = String(usersData[i][1]).trim();
+        
+        if (dbUser === inputUser && dbPass === inputPass) {
+          foundUser = {
+            username: usersData[i][0],
+            role: usersData[i][2]
+          };
+          break;
+        }
+      }
+
+      if (foundUser) {
+        result = { status: 'success', user: foundUser };
+      } else {
+        result = { status: 'error', message: 'Username atau Password salah' };
+      }
+
+    } else if (action === 'ADD_PRODUCT') {
       const sheet = ss.getSheetByName('Barang');
       const kSheet = ss.getSheetByName('Kas'); // Load Kas sheet
       const id = Utilities.getUuid();
@@ -158,11 +192,7 @@ function doPost(e) {
       // LOGIKA TANGGAL: Gunakan customDate jika ada (Backdate), jika tidak pakai Now
       let date;
       if (payload.customDate) {
-         // Pastikan format tanggal string diproses dengan benar
          date = new Date(payload.customDate);
-         // Opsional: set jam ke saat ini agar urutan tidak 00:00 jika diperlukan, 
-         // atau biarkan default agar murni tanggal tersebut.
-         // Disini kita biarkan default new Date(string) atau tambahkan jam sekarang.
          const now = new Date();
          date.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
       } else {

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { User } from '../types';
 import { Lock, User as UserIcon, Store } from 'lucide-react';
+import { Api } from '../services/api';
 
 interface LoginProps {
   onLogin: (user: User) => void;
@@ -15,14 +16,6 @@ async function sha256(message: string): Promise<string> {
   return hashHex;
 }
 
-// HASH DATABASE (Aman untuk publik karena One-Way Hash)
-// Password asli tidak disimpan di kode, hanya hasil enkripsinya.
-const CREDENTIALS = {
-  ADMIN_HASH: '5f4dcc3b5aa765d61d8327deb882cf994b00244477b823e21817c7d424269147', // Pass: smaksaka4668@!
-  KASIR_HASH: '3a95c8c93547872d8879574492667b36f0144f81498b0f80720448962c0b624f', // Pass: smaksaka
-  MANAGER_HASH: '39f6067644265507b99c1c4f5802142271df532f814d693f1d8c1c548232c253' // Pass: smaksaka21
-};
-
 const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -35,28 +28,31 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setIsLoading(true);
 
     try {
-      // Normalisasi Input:
-      // 1. Username jadi lowercase & trim spasi
-      // 2. Password di-trim spasi (untuk menghindari error copy-paste)
-      const cleanUsername = username.trim().toLowerCase();
+      const cleanUsername = username.trim();
       const cleanPassword = password.trim(); 
 
-      // Hash input password pengguna sebelum dibandingkan
+      // 1. Hash password di sisi Client sebelum dikirim ke API
+      // Ini menjaga keamanan agar password asli tidak dikirim via network
       const inputHash = await sha256(cleanPassword);
       
-      // Bandingkan Hash vs Hash (Bukan text vs text)
-      if (cleanUsername === 'admin' && inputHash === CREDENTIALS.ADMIN_HASH) {
-        onLogin({ username: 'Admin', role: 'admin' });
-      } else if (cleanUsername === 'kasir' && inputHash === CREDENTIALS.KASIR_HASH) {
-        onLogin({ username: 'Kasir', role: 'kasir' });
-      } else if (cleanUsername === 'manager' && inputHash === CREDENTIALS.MANAGER_HASH) {
-        onLogin({ username: 'Manager', role: 'manager' });
+      // 2. Kirim ke API (Backend Google Sheet) untuk dicek
+      // Backend akan mencocokkan hash yang dikirim dengan hash yang ada di Sheet 'Users'
+      const response = await Api.postData('LOGIN', {
+        username: cleanUsername,
+        password: inputHash
+      });
+
+      if (response && response.status === 'success' && response.user) {
+         // Login Berhasil
+         onLogin(response.user);
       } else {
-        setError('Username atau password salah!');
+         // Login Gagal (Response dari backend: error atau user tidak ditemukan)
+         setError(response.message || 'Username atau password salah!');
       }
+
     } catch (err) {
       console.error(err);
-      setError('Terjadi kesalahan enkripsi browser. Pastikan menggunakan HTTPS atau Localhost.');
+      setError('Gagal menghubungi server. Periksa koneksi internet atau URL API.');
     } finally {
       setIsLoading(false);
     }
@@ -128,7 +124,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
           
           <div className="mt-6 text-center text-xs text-gray-400">
             &copy; {new Date().getFullYear()} Amsa Mart System <br/>
-            <span className="text-[10px] text-gray-300">Secured with SHA-256 Encryption</span>
+            <span className="text-[10px] text-gray-300">Database Connection: Google Sheets</span>
           </div>
         </div>
       </div>
