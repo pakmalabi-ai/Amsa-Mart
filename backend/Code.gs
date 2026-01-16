@@ -77,48 +77,59 @@ function doPost(e) {
       result = { status: 'success' };
 
     } else if (action === 'RESTOCK_PRODUCT') {
-      // LOGIKA BARU: Lebih robust untuk Restock
+      // LOGIKA BARU: Restock dengan pencocokan ID yang ketat (String comparison)
       const iSheet = ss.getSheetByName('Barang');
       const kSheet = ss.getSheetByName('Kas');
       
       if (!iSheet || !kSheet) throw new Error("Sheet 'Barang' atau 'Kas' tidak ditemukan.");
 
-      // Ambil semua data barang untuk mencari ID
+      // Ambil semua data barang (termasuk header)
       const dataBarang = iSheet.getDataRange().getValues();
       let rowIndex = -1;
       
       // Loop cari ID (mulai index 1 untuk skip header)
+      // Konversi ke String agar aman dari perbedaan tipe data (Excel number vs JSON string)
+      const targetId = String(payload.id).trim();
+
       for (let i = 1; i < dataBarang.length; i++) {
-        if (String(dataBarang[i][0]) === String(payload.id)) {
+        const rowId = String(dataBarang[i][0]).trim(); // Kolom A (Index 0) adalah ID
+        if (rowId === targetId) {
           rowIndex = i;
           break;
         }
       }
 
       if (rowIndex !== -1) {
-        // Baris di Excel = rowIndex + 1 (karena array 0-based)
+        // Baris di Excel = rowIndex + 1 (karena array 0-based, row Excel 1-based)
         const sheetRow = rowIndex + 1;
 
         // Ambil stok lama & hitung baru
-        // Col 6 di Excel = Index 5 di Array
-        const currentStock = Number(dataBarang[rowIndex][5]) || 0; 
-        const qtyToAdd = Number(payload.qty) || 0;
-        const newStock = currentStock + qtyToAdd;
+        // Kolom F (Index 5) adalah Stok
+        const currentStock = Number(dataBarang[rowIndex][5]); 
+        const qtyToAdd = Number(payload.qty);
+        
+        // Validasi angka agar tidak NaN
+        const validStock = isNaN(currentStock) ? 0 : currentStock;
+        const validQty = isNaN(qtyToAdd) ? 0 : qtyToAdd;
+        
+        const newStock = validStock + validQty;
         const buyPrice = Number(payload.harga_beli);
 
-        // 1. Update Stok (Kolom 6) dan Harga Beli (Kolom 4)
+        // 1. Update Stok (Kolom 6 / F) dan Harga Beli (Kolom 4 / D)
+        // getRange(row, column) -> column 1-based
         iSheet.getRange(sheetRow, 6).setValue(newStock); 
         iSheet.getRange(sheetRow, 4).setValue(buyPrice); 
 
-        // Reset status pemesanan jika sebelumnya 'ordered' (Kolom 8)
+        // Reset status pemesanan jika sebelumnya 'ordered' (Kolom 8 / H)
+        // Cek dataBarang[rowIndex][7] (status_pemesanan)
         if (dataBarang[rowIndex][7] === 'ordered') {
            iSheet.getRange(sheetRow, 8).setValue(''); 
         }
 
         // 2. Catat Pengeluaran di Buku Kas
         const kId = Utilities.getUuid();
-        const totalBelanja = qtyToAdd * buyPrice;
-        const deskripsi = `Belanja Stok: ${payload.nama} (${qtyToAdd} pcs)`;
+        const totalBelanja = validQty * buyPrice;
+        const deskripsi = `Belanja Stok: ${payload.nama} (${validQty} pcs)`;
         const date = new Date();
         
         // Format Kas: id, tanggal, deskripsi, debit, kredit, kategori
@@ -126,7 +137,7 @@ function doPost(e) {
         
         result = { status: 'success', message: 'Stok diperbarui & tercatat di Pengeluaran' };
       } else {
-        result = { status: 'error', message: 'Barang tidak ditemukan (ID mismatch)' };
+        result = { status: 'error', message: 'Barang tidak ditemukan. ID: ' + targetId };
       }
 
     } else if (action === 'DELETE_PRODUCT') {
@@ -153,12 +164,13 @@ function doPost(e) {
         paymentType
       ]);
 
-      // 2. Kurangi Stok (Looping manual agar aman)
+      // 2. Kurangi Stok
       const dataBarang = iSheet.getDataRange().getValues();
       
       payload.items.forEach(cartItem => {
+        const cartId = String(cartItem.id).trim();
         for (let i = 1; i < dataBarang.length; i++) {
-          if (String(dataBarang[i][0]) === String(cartItem.id)) {
+          if (String(dataBarang[i][0]).trim() === cartId) {
             const currentStok = Number(dataBarang[i][5]) || 0;
             const newStok = currentStok - cartItem.qty;
             // Update stok di baris yang sesuai (Kolom 6)
@@ -213,8 +225,9 @@ function getData(sheet) {
 
 function updateRow(sheet, id, newValues) {
   const data = sheet.getDataRange().getValues();
+  const targetId = String(id).trim();
   for (let i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === String(id)) {
+    if (String(data[i][0]).trim() === targetId) {
       sheet.getRange(i + 1, 1, 1, newValues.length).setValues([newValues]);
       break;
     }
@@ -223,8 +236,9 @@ function updateRow(sheet, id, newValues) {
 
 function deleteRow(sheet, id) {
   const data = sheet.getDataRange().getValues();
+  const targetId = String(id).trim();
   for (let i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === String(id)) {
+    if (String(data[i][0]).trim() === targetId) {
       sheet.deleteRow(i + 1);
       break;
     }

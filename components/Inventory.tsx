@@ -131,6 +131,7 @@ const Inventory: React.FC<InventoryProps> = ({ data, refreshData }) => {
 
     setIsSaving(true);
     try {
+      // Mengirim data ke backend dengan format yang konsisten
       await Api.postData('RESTOCK_PRODUCT', {
         id: selectedRestockItem.id,
         nama: selectedRestockItem.nama,
@@ -148,7 +149,7 @@ const Inventory: React.FC<InventoryProps> = ({ data, refreshData }) => {
       
       refreshData();
     } catch (error) {
-      alert("Gagal melakukan restok. Cek koneksi internet atau script backend.");
+      alert("Gagal melakukan restok. Pastikan Google Apps Script sudah di-Deploy sebagai 'New Version'.");
       console.error(error);
     } finally {
       setIsSaving(false);
