@@ -1,19 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { User } from '../types';
-import { Lock, User as UserIcon, Store, HelpCircle, Copy, Check } from 'lucide-react';
+import { Lock, User as UserIcon, Store, AlertCircle, RefreshCw } from 'lucide-react';
 import { Api } from '../services/api';
 
 interface LoginProps {
   onLogin: (user: User) => void;
-}
-
-// Fungsi Utility untuk Hashing SHA-256
-async function sha256(message: string): Promise<string> {
-  const msgBuffer = new TextEncoder().encode(message);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const hashHex = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
-  return hashHex;
 }
 
 const Login: React.FC<LoginProps> = ({ onLogin }) => {
@@ -21,32 +12,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  
-  // State untuk Debugging Hash
-  const [debugHash, setDebugHash] = useState('');
-  const [showDebug, setShowDebug] = useState(false);
-  const [copied, setCopied] = useState(false);
-
-  // Effect untuk generate hash realtime saat user mengetik
-  useEffect(() => {
-    const generateHash = async () => {
-      if (password) {
-        const hash = await sha256(password.trim());
-        setDebugHash(hash);
-      } else {
-        setDebugHash('');
-      }
-    };
-    generateHash();
-  }, [password]);
-
-  const handleCopyHash = () => {
-    if (debugHash) {
-      navigator.clipboard.writeText(debugHash);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
+  const [isResetting, setIsResetting] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,26 +20,17 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setIsLoading(true);
 
     try {
-      const cleanUsername = username.trim().toLowerCase();
-      
-      // Gunakan hash yang sudah dihitung di state
-      const inputHash = debugHash || await sha256(password.trim());
-      
-      console.log("=== LOGIN ATTEMPT ===");
-      console.log("User:", cleanUsername);
-      console.log("Pass Hash:", inputHash);
-
+      // Mengirim data username & password (plain text) ke backend
+      // Backend akan mencocokkan dengan data di Sheet 'Users'
       const response = await Api.postData('LOGIN', {
-        username: cleanUsername,
-        password: inputHash
+        username: username.trim(),
+        password: password.trim()
       });
 
       if (response && response.status === 'success' && response.user) {
          onLogin(response.user);
       } else {
-         setError(response.message || 'Gagal Login. Pastikan Hash di Sheet Users sesuai dengan Hash di bawah ini.');
-         // Otomatis munculkan debug jika gagal
-         setShowDebug(true);
+         setError(response.message || 'Username atau password salah!');
       }
 
     } catch (err) {
@@ -84,30 +41,41 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     }
   };
 
+  const handleResetUsers = async () => {
+    if (!confirm("PERHATIAN: Ini akan menghapus sheet 'Users' dan mengisi ulang dengan akun default (admin, kasir, manager) beserta password aslinya. Lanjutkan?")) return;
+    
+    setIsResetting(true);
+    try {
+      const res = await Api.postData('RESET_USERS', {});
+      if (res.status === 'success') {
+        alert("Reset Sukses! Silakan login.");
+        setError('');
+      } else {
+        alert("Gagal reset: " + res.message);
+      }
+    } catch (e) {
+      alert("Gagal menghubungi server.");
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
-        <div className="bg-blue-600 p-8 text-center text-white relative">
+        <div className="bg-blue-600 p-8 text-center text-white">
           <div className="mx-auto bg-blue-500 w-16 h-16 rounded-full flex items-center justify-center mb-4 shadow-inner">
             <Store size={32} />
           </div>
           <h1 className="text-2xl font-bold">Amsa Mart</h1>
           <p className="text-blue-100">Sistem Manajemen Toko</p>
-          
-          <button 
-            onClick={() => setShowDebug(!showDebug)}
-            className="absolute top-4 right-4 text-blue-300 hover:text-white"
-            title="Bantuan Login"
-          >
-            <HelpCircle size={20} />
-          </button>
         </div>
 
         <div className="p-8">
           <form onSubmit={handleLogin} className="space-y-6">
             {error && (
-              <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm text-center font-medium border border-red-100">
-                {error}
+              <div className="bg-red-50 text-red-700 p-3 rounded-lg text-sm font-medium border border-red-200 flex items-center justify-center gap-2 text-center">
+                <AlertCircle size={16} className="shrink-0"/> <span>{error}</span>
               </div>
             )}
             
@@ -147,27 +115,6 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
               </div>
             </div>
 
-            {/* AREA DEBUG HASH */}
-            {showDebug && password && (
-              <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200 text-xs">
-                <p className="font-bold text-yellow-800 mb-1">Kode Hash Password Anda:</p>
-                <div className="bg-white p-2 border border-gray-200 rounded break-all font-mono text-gray-600 mb-2 select-all">
-                  {debugHash}
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-500">Copy kode di atas ke kolom 'password' di Google Sheet agar login berhasil.</span>
-                  <button 
-                    type="button"
-                    onClick={handleCopyHash}
-                    className="flex items-center gap-1 bg-white border border-gray-300 px-2 py-1 rounded hover:bg-gray-50 transition-colors text-gray-700 font-medium"
-                  >
-                    {copied ? <Check size={14} className="text-green-600"/> : <Copy size={14}/>}
-                    {copied ? 'Copied' : 'Copy'}
-                  </button>
-                </div>
-              </div>
-            )}
-
             <button
               type="submit"
               disabled={isLoading}
@@ -176,6 +123,19 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
               {isLoading ? 'Memverifikasi...' : 'Masuk Aplikasi'}
             </button>
           </form>
+
+          {/* Tombol Reset User */}
+          <div className="mt-8 pt-4 border-t border-gray-100 text-center">
+            <p className="text-xs text-gray-400 mb-2">Belum setup data user di Sheet?</p>
+            <button 
+              onClick={handleResetUsers}
+              disabled={isResetting}
+              className="text-xs text-blue-600 font-bold hover:text-blue-800 flex items-center justify-center gap-1 mx-auto"
+            >
+              <RefreshCw size={12} className={isResetting ? "animate-spin" : ""} />
+              {isResetting ? "Sedang Mereset..." : "Reset Data User ke Default"}
+            </button>
+          </div>
           
           <div className="mt-6 text-center text-xs text-gray-400">
             &copy; {new Date().getFullYear()} Amsa Mart System <br/>

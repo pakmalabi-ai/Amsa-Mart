@@ -10,7 +10,7 @@
 //    - Execute as: Me (saya)
 //    - Who has access: Anyone (Siapa saja)
 
-const SHEET_ID = ''; // OPSI: Jika script terpisah dari sheet, isi ID Sheet. Jika menyatu, biarkan kosong.
+const SHEET_ID = ''; // OPSI: Jika script terpisah dari sheet, isi ID Sheet.
 
 function getSpreadsheet() {
   return SHEET_ID ? SpreadsheetApp.openById(SHEET_ID) : SpreadsheetApp.getActiveSpreadsheet();
@@ -49,32 +49,31 @@ function doPost(e) {
     const payload = data.payload;
 
     if (action === 'LOGIN') {
+      // --- LOGIKA LOGIN (PLAIN TEXT) ---
       const uSheet = ss.getSheetByName('Users');
       if (!uSheet) {
-        throw new Error("Sheet 'Users' tidak ditemukan. Pastikan nama tab persis 'Users' (Huruf besar U).");
+        throw new Error("Sheet 'Users' tidak ditemukan. Gunakan tombol 'Reset Data User' di halaman login.");
       }
       
-      const usersData = uSheet.getDataRange().getValues(); // [username, password, role]
+      const usersData = uSheet.getDataRange().getValues();
       let foundUser = null;
       
-      // Normalisasi Input dari Frontend (Hapus spasi, lowercase username)
-      const inputUser = String(payload.username).toLowerCase().replace(/\s/g, '');
-      const inputPass = String(payload.password).replace(/\s/g, '');
+      // Normalisasi input (trim spasi)
+      const inputUser = String(payload.username).trim();
+      const inputPass = String(payload.password).trim(); 
 
-      // Loop database (Mulai index 1 untuk skip header)
+      // Loop data sheet (Mulai index 1 karena index 0 adalah Header)
       for (let i = 1; i < usersData.length; i++) {
-        // Ambil data dari sheet dan bersihkan sebersih-bersihnya
-        // replace(/\s/g, '') akan menghapus semua spasi, enter, atau tab yang tidak sengaja ter-copy
-        const dbUser = String(usersData[i][0]).toLowerCase().replace(/\s/g, '');
-        const dbPass = String(usersData[i][1]).replace(/\s/g, ''); // Hash di sheet
-        
-        // Debugging di Server Side (Bisa dilihat di Executions log Google Script)
-        // Logger.log(`Try Match: Input(${inputUser}) vs DB(${dbUser})`);
-        
+        // Kolom 0: Username, Kolom 1: Password (Plain Text), Kolom 2: Role
+        const dbUser = String(usersData[i][0]).trim();
+        const dbPass = String(usersData[i][1]).trim();
+        const dbRole = usersData[i][2];
+
+        // Pencocokan (Case Sensitive untuk password disarankan, tapi disini kita samakan persis stringnya)
         if (dbUser === inputUser && dbPass === inputPass) {
           foundUser = {
-            username: usersData[i][0], // Kembalikan username asli (display name)
-            role: usersData[i][2]
+            username: usersData[i][0], 
+            role: dbRole
           };
           break;
         }
@@ -83,12 +82,31 @@ function doPost(e) {
       if (foundUser) {
         result = { status: 'success', user: foundUser };
       } else {
-        result = { status: 'error', message: 'Username atau Password salah. Cek data di Sheet Users.' };
+        result = { status: 'error', message: 'Username atau Password salah!' };
       }
+
+    } else if (action === 'RESET_USERS') {
+      // --- FITUR ISI USER DEFAULT (PLAIN TEXT) ---
+      let uSheet = ss.getSheetByName('Users');
+      if (!uSheet) {
+        uSheet = ss.insertSheet('Users');
+      } else {
+        uSheet.clear(); // Hapus data lama
+      }
+
+      // Buat Header
+      uSheet.appendRow(['username', 'password', 'role']);
+
+      // Tambahkan User Default sesuai permintaan
+      uSheet.appendRow(['admin', 'smaksaka4668@!', 'admin']);
+      uSheet.appendRow(['kasir', 'smaksaka', 'kasir']);
+      uSheet.appendRow(['manager', 'smaksaka21', 'manager']);
+
+      result = { status: 'success', message: 'Data User berhasil di-reset. Password tersimpan di Sheet "Users".' };
 
     } else if (action === 'ADD_PRODUCT') {
       const sheet = ss.getSheetByName('Barang');
-      const kSheet = ss.getSheetByName('Kas'); // Load Kas sheet
+      const kSheet = ss.getSheetByName('Kas');
       const id = Utilities.getUuid();
       
       const stokAwal = Number(payload.stok) || 0;
@@ -105,13 +123,11 @@ function doPost(e) {
         payload.status_pemesanan || '' 
       ]);
 
-      // LOGIKA BARU: Jika ada Stok Awal, catat sebagai Pengeluaran Belanja Stok
       if (stokAwal > 0 && hargaBeli > 0 && kSheet) {
         const kId = Utilities.getUuid();
         const total = stokAwal * hargaBeli;
         const deskripsi = `Stok Awal Barang Baru: ${payload.nama} (${stokAwal} pcs)`;
         const date = new Date();
-        // Format Kas: id, tanggal, deskripsi, debit, kredit, kategori
         kSheet.appendRow([kId, date, deskripsi, 0, total, 'Belanja Stok']);
       }
 
@@ -132,7 +148,6 @@ function doPost(e) {
       result = { status: 'success' };
 
     } else if (action === 'RESTOCK_PRODUCT') {
-      // LOGIKA RESTOK: Update Stok & Catat di Kas
       const iSheet = ss.getSheetByName('Barang');
       const kSheet = ss.getSheetByName('Kas');
       
@@ -153,23 +168,18 @@ function doPost(e) {
         const sheetRow = rowIndex + 1;
         const currentStock = Number(dataBarang[rowIndex][5]); 
         const qtyToAdd = Number(payload.qty);
-        
         const validStock = isNaN(currentStock) ? 0 : currentStock;
         const validQty = isNaN(qtyToAdd) ? 0 : qtyToAdd;
-        
         const newStock = validStock + validQty;
         const buyPrice = Number(payload.harga_beli);
 
-        // 1. Update Stok & Harga Beli Terakhir
         iSheet.getRange(sheetRow, 6).setValue(newStock); 
         iSheet.getRange(sheetRow, 4).setValue(buyPrice); 
 
-        // Reset status pemesanan
         if (dataBarang[rowIndex][7] === 'ordered') {
            iSheet.getRange(sheetRow, 8).setValue(''); 
         }
 
-        // 2. Catat Pengeluaran di Buku Kas
         const kId = Utilities.getUuid();
         const totalBelanja = validQty * buyPrice;
         const deskripsi = `Belanja Stok: ${payload.nama} (${validQty} pcs)`;
@@ -177,9 +187,9 @@ function doPost(e) {
         
         kSheet.appendRow([kId, date, deskripsi, 0, totalBelanja, 'Belanja Stok']);
         
-        result = { status: 'success', message: 'Stok diperbarui & tercatat di Pengeluaran' };
+        result = { status: 'success', message: 'Stok diperbarui' };
       } else {
-        result = { status: 'error', message: 'Barang tidak ditemukan. ID: ' + targetId };
+        result = { status: 'error', message: 'Barang tidak ditemukan.' };
       }
 
     } else if (action === 'DELETE_PRODUCT') {
@@ -194,7 +204,6 @@ function doPost(e) {
 
       const tId = Utilities.getUuid();
       
-      // LOGIKA TANGGAL: Gunakan customDate jika ada (Backdate), jika tidak pakai Now
       let date;
       if (payload.customDate) {
          date = new Date(payload.customDate);
@@ -206,7 +215,6 @@ function doPost(e) {
 
       const paymentType = payload.paymentMethod || 'Tunai';
       
-      // 1. Catat Transaksi
       tSheet.appendRow([
         tId, 
         date, 
@@ -216,7 +224,6 @@ function doPost(e) {
         paymentType
       ]);
 
-      // 2. Kurangi Stok
       const dataBarang = iSheet.getDataRange().getValues();
       payload.items.forEach(cartItem => {
         const cartId = String(cartItem.id).trim();
@@ -230,11 +237,8 @@ function doPost(e) {
         }
       });
 
-      // 3. Masuk Buku Kas (Pemasukan/Debit)
       const kId = Utilities.getUuid();
       const deskripsi = `Penjualan POS (${paymentType})`;
-      
-      // Pastikan pencatatan Kas juga mengikuti tanggal transaksi
       kSheet.appendRow([kId, date, deskripsi, payload.total, 0, 'Penjualan']);
       
       result = { status: 'success', transactionId: tId };
@@ -247,11 +251,9 @@ function doPost(e) {
       result = { status: 'success' };
 
     } else if (action === 'ADD_EXPENSE') {
-      // LOGIKA BARU: Tambah Pengeluaran Operasional
       const kSheet = ss.getSheetByName('Kas');
       const kId = Utilities.getUuid();
       const date = new Date();
-      // id, tanggal, deskripsi, debit (0), kredit (jumlah), kategori
       kSheet.appendRow([kId, date, payload.deskripsi, 0, payload.jumlah, payload.kategori]);
       result = { status: 'success' };
 
@@ -271,7 +273,6 @@ function doPost(e) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-// Helpers
 function getData(sheet) {
   if (!sheet) return [];
   const rows = sheet.getDataRange().getValues();
