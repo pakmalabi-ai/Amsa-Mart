@@ -10,7 +10,6 @@ interface ReportsProps {
 const Reports: React.FC<ReportsProps> = ({ inventory, ledger }) => {
   // Perhitungan Aset Stok
   const nilaiAsetStok = inventory.reduce((sum, item) => sum + (item.harga_beli * item.stok), 0);
-  const potensiOmset = inventory.reduce((sum, item) => sum + (item.harga_jual * item.stok), 0);
   
   // Perhitungan Kas
   const kasTotal = ledger.reduce((sum, item) => sum + (item.debit || 0) - (item.kredit || 0), 0);

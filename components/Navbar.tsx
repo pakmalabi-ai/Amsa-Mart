@@ -1,6 +1,6 @@
 import React from 'react';
 import { LayoutGrid, ShoppingCart, BookOpen, BarChart3, Store, Settings, LogOut } from 'lucide-react';
-import { ViewState, UserRole, User } from '../types';
+import { ViewState, User } from '../types';
 
 interface NavbarProps {
   currentView: ViewState;
