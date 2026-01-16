@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Product } from '../types';
 import { Api } from '../services/api';
-import { Edit, Trash2, Plus, Save, X, Download, RefreshCw, AlertTriangle, CheckCircle, Truck, AlertCircle } from 'lucide-react';
+import { Edit, Trash2, Plus, Save, X, Download, RefreshCw, AlertTriangle, CheckCircle, Truck, AlertCircle, ShoppingCart, Search } from 'lucide-react';
 import { exportToExcel } from '../utils/excelExport';
 
 interface InventoryProps {
@@ -28,10 +28,26 @@ const Inventory: React.FC<InventoryProps> = ({ data, refreshData }) => {
   const [reorderThreshold, setReorderThreshold] = useState(5);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState<string | null>(null);
 
+  // Restock State
+  const [isRestockModalOpen, setIsRestockModalOpen] = useState(false);
+  const [restockSearchTerm, setRestockSearchTerm] = useState('');
+  const [selectedRestockItem, setSelectedRestockItem] = useState<Product | null>(null);
+  const [restockQty, setRestockQty] = useState<number>(0);
+  const [restockBuyPrice, setRestockBuyPrice] = useState<number>(0);
+
   // Filter Low Stock Items
   const lowStockItems = useMemo(() => {
     return data.filter(item => item.stok <= reorderThreshold);
   }, [data, reorderThreshold]);
+
+  // Filter Restock Search
+  const filteredRestockItems = useMemo(() => {
+    if (!restockSearchTerm) return [];
+    return data.filter(item => 
+      item.nama.toLowerCase().includes(restockSearchTerm.toLowerCase()) || 
+      item.kode.toLowerCase().includes(restockSearchTerm.toLowerCase())
+    ).slice(0, 5); // Limit 5 items
+  }, [data, restockSearchTerm]);
 
   // Fungsi untuk generate kode barang otomatis
   const generateNextCode = (categoryLabel: string): string => {
@@ -101,6 +117,41 @@ const Inventory: React.FC<InventoryProps> = ({ data, refreshData }) => {
     }
   };
 
+  const handleRestockSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedRestockItem || restockQty <= 0) return;
+
+    if (!confirm(`Konfirmasi belanja stok:\n${selectedRestockItem.nama}\nJumlah: ${restockQty}\nTotal: Rp ${(restockQty * restockBuyPrice).toLocaleString()}`)) return;
+
+    setIsSaving(true);
+    try {
+      await Api.postData('RESTOCK_PRODUCT', {
+        id: selectedRestockItem.id,
+        nama: selectedRestockItem.nama,
+        qty: restockQty,
+        harga_beli: restockBuyPrice
+      });
+      setIsRestockModalOpen(false);
+      // Reset form
+      setSelectedRestockItem(null);
+      setRestockQty(0);
+      setRestockSearchTerm('');
+      refreshData();
+      alert("Stok berhasil ditambahkan dan tercatat di Pengeluaran.");
+    } catch (error) {
+      alert("Gagal melakukan restok.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSelectRestockItem = (item: Product) => {
+    setSelectedRestockItem(item);
+    setRestockBuyPrice(item.harga_beli);
+    setRestockQty(0);
+    setRestockSearchTerm(''); // Clear search to hide list
+  };
+
   const handleExport = (period: 'Harian' | 'Mingguan' | 'Bulanan') => {
     const timestamp = new Date().toISOString().split('T')[0];
     exportToExcel(data, `Stok_Barang_${period}_${timestamp}`);
@@ -153,7 +204,7 @@ const Inventory: React.FC<InventoryProps> = ({ data, refreshData }) => {
             }`}
           >
             <AlertTriangle size={18} />
-            <span className="font-semibold text-sm">Cek Stok Menipis</span>
+            <span className="font-semibold text-sm hidden sm:inline">Cek Stok</span>
             {lowStockItems.length > 0 && (
               <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm animate-pulse">
                 {lowStockItems.length}
@@ -161,24 +212,22 @@ const Inventory: React.FC<InventoryProps> = ({ data, refreshData }) => {
             )}
           </button>
 
-          {/* Tombol Export Group */}
-          <div className="flex bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-             <button onClick={() => handleExport('Harian')} className="px-3 py-2 text-xs font-medium hover:bg-gray-50 border-r">
-               Exp. Harian
-             </button>
-             <button onClick={() => handleExport('Mingguan')} className="px-3 py-2 text-xs font-medium hover:bg-gray-50 border-r">
-               Exp. Mingguan
-             </button>
-             <button onClick={() => handleExport('Bulanan')} className="px-3 py-2 text-xs font-medium hover:bg-gray-50 flex items-center gap-1">
-               <Download size={14}/> Exp. Bulanan
-             </button>
-          </div>
+          {/* Tombol Restock / Belanja Stok */}
+          <button 
+            onClick={() => setIsRestockModalOpen(true)}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 shadow"
+            title="Tambah stok barang yang sudah ada (Masuk Pengeluaran)"
+          >
+            <ShoppingCart size={18} /> 
+            <span className="font-medium">Belanja Stok (Restok)</span>
+          </button>
 
           <button 
             onClick={handleAdd}
             className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 shadow"
+            title="Buat data barang baru"
           >
-            <Plus size={18} /> Tambah Barang
+            <Plus size={18} /> Tambah Barang Baru
           </button>
         </div>
       </div>
@@ -223,8 +272,8 @@ const Inventory: React.FC<InventoryProps> = ({ data, refreshData }) => {
                     )}
                   </td>
                   <td className="p-4 flex justify-center space-x-2">
-                    <button onClick={() => handleEdit(item)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"><Edit size={16} /></button>
-                    <button onClick={() => handleDelete(item.id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded"><Trash2 size={16} /></button>
+                    <button onClick={() => handleEdit(item)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded" title="Edit Data Barang"><Edit size={16} /></button>
+                    <button onClick={() => handleDelete(item.id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded" title="Hapus Barang"><Trash2 size={16} /></button>
                   </td>
                 </tr>
               ))}
@@ -332,12 +381,129 @@ const Inventory: React.FC<InventoryProps> = ({ data, refreshData }) => {
         </div>
       )}
 
-      {/* Modal Add/Edit Product */}
+      {/* MODAL RESTOK / BELANJA STOK (BARU) */}
+      {isRestockModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+             <div className="p-4 border-b flex justify-between items-center bg-blue-50 rounded-t-xl">
+               <div>
+                  <h3 className="text-lg font-bold text-blue-800 flex items-center gap-2">
+                    <ShoppingCart size={20} /> Belanja Stok / Restok
+                  </h3>
+                  <p className="text-xs text-blue-600">Tambah stok barang lama & catat pengeluaran otomatis.</p>
+               </div>
+               <button onClick={() => setIsRestockModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+             </div>
+
+             <form onSubmit={handleRestockSubmit} className="p-6 space-y-4">
+               {/* Search Barang */}
+               {!selectedRestockItem ? (
+                 <div>
+                   <label className="block text-sm font-medium text-gray-700 mb-1">Cari Nama Barang / Kode</label>
+                   <div className="relative">
+                     <Search className="absolute left-3 top-3 text-gray-400" size={18} />
+                     <input 
+                       type="text" 
+                       autoFocus
+                       className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                       placeholder="Ketik untuk mencari..."
+                       value={restockSearchTerm}
+                       onChange={(e) => setRestockSearchTerm(e.target.value)}
+                     />
+                   </div>
+                   {/* Dropdown Hasil Pencarian */}
+                   {filteredRestockItems.length > 0 && (
+                     <div className="mt-2 border rounded-lg shadow-sm overflow-hidden bg-white max-h-48 overflow-y-auto">
+                       {filteredRestockItems.map(item => (
+                         <div 
+                           key={item.id} 
+                           onClick={() => handleSelectRestockItem(item)}
+                           className="p-3 hover:bg-blue-50 cursor-pointer border-b last:border-0 flex justify-between items-center"
+                         >
+                           <div>
+                             <div className="font-medium text-gray-800">{item.nama}</div>
+                             <div className="text-xs text-gray-500">{item.kode} | Stok: {item.stok}</div>
+                           </div>
+                           <Plus size={16} className="text-blue-500"/>
+                         </div>
+                       ))}
+                     </div>
+                   )}
+                   {restockSearchTerm && filteredRestockItems.length === 0 && (
+                     <div className="mt-2 text-sm text-gray-500 text-center p-2">Barang tidak ditemukan.</div>
+                   )}
+                 </div>
+               ) : (
+                 <div className="space-y-4">
+                    {/* Selected Item Display */}
+                    <div className="bg-blue-50 p-3 rounded-lg flex justify-between items-start">
+                      <div>
+                        <div className="text-xs text-blue-600 font-bold mb-1">BARANG DIPILIH:</div>
+                        <div className="font-bold text-gray-800">{selectedRestockItem.nama}</div>
+                        <div className="text-xs text-gray-600">{selectedRestockItem.kode}</div>
+                        <div className="text-xs text-gray-600 mt-1">Stok Saat Ini: <span className="font-bold">{selectedRestockItem.stok}</span></div>
+                      </div>
+                      <button 
+                        type="button" 
+                        onClick={() => setSelectedRestockItem(null)} 
+                        className="text-gray-400 hover:text-red-500"
+                      >
+                        Ganti
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Jumlah Beli (Pcs)</label>
+                        <input 
+                          required 
+                          type="number" 
+                          min="1"
+                          className="w-full border border-gray-300 rounded-lg p-2 font-bold text-lg" 
+                          value={restockQty} 
+                          onChange={e => setRestockQty(Number(e.target.value))} 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Harga Beli Satuan</label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-2 text-gray-500 text-sm">Rp</span>
+                          <input 
+                            required 
+                            type="number" 
+                            className="w-full border border-gray-300 rounded-lg p-2 pl-8" 
+                            value={restockBuyPrice} 
+                            onChange={e => setRestockBuyPrice(Number(e.target.value))} 
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-3 bg-gray-50 rounded-lg border flex justify-between items-center">
+                       <span className="text-sm font-medium text-gray-600">Total Pengeluaran:</span>
+                       <span className="text-lg font-bold text-red-600">Rp {(restockQty * restockBuyPrice).toLocaleString()}</span>
+                    </div>
+
+                    <button 
+                      type="submit" 
+                      disabled={isSaving || restockQty <= 0} 
+                      className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 disabled:bg-gray-400 flex justify-center items-center gap-2 shadow-md transition-all active:scale-95"
+                    >
+                      <Save size={18} /> {isSaving ? 'Menyimpan...' : 'Simpan Stok & Catat Pengeluaran'}
+                    </button>
+                 </div>
+               )}
+             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Add/Edit Product (Master Data Baru) */}
       {isModalOpen && editingItem && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
             <div className="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-xl">
-              <h3 className="text-lg font-bold text-gray-800">{editingItem.id ? 'Edit Barang' : 'Tambah Barang Baru'}</h3>
+              <h3 className="text-lg font-bold text-gray-800">{editingItem.id ? 'Edit Data Barang' : 'Tambah Barang Baru'}</h3>
               <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-4">

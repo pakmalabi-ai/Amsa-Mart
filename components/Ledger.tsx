@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { LedgerEntry } from '../types';
-import { ArrowDownLeft, ArrowUpRight, Download, Filter } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Download, Filter, PlusCircle, Save, X } from 'lucide-react';
 import { exportToExcel } from '../utils/excelExport';
+import { Api } from '../services/api';
 
 interface LedgerProps {
   data: LedgerEntry[];
@@ -10,6 +11,12 @@ interface LedgerProps {
 const Ledger: React.FC<LedgerProps> = ({ data }) => {
   // State Filter Bulan
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM
+  
+  // State Modal Capital
+  const [isCapitalModalOpen, setIsCapitalModalOpen] = useState(false);
+  const [capitalAmount, setCapitalAmount] = useState<number | ''>('');
+  const [capitalDesc, setCapitalDesc] = useState('Modal Awal Tambahan');
+  const [isSaving, setIsSaving] = useState(false);
 
   // Filter Data berdasarkan Bulan
   const filteredData = data.filter(item => item.tanggal.startsWith(selectedMonth));
@@ -32,26 +39,61 @@ const Ledger: React.FC<LedgerProps> = ({ data }) => {
     exportToExcel(exportData, `Buku_Kas_${selectedMonth}`);
   };
 
+  const handleSaveCapital = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!capitalAmount || Number(capitalAmount) <= 0) return;
+
+    if (!confirm(`Konfirmasi input modal sebesar Rp ${Number(capitalAmount).toLocaleString()}?`)) return;
+
+    setIsSaving(true);
+    try {
+      await Api.postData('ADD_CAPITAL', {
+        jumlah: Number(capitalAmount),
+        deskripsi: capitalDesc
+      });
+      alert('Modal berhasil ditambahkan!');
+      setIsCapitalModalOpen(false);
+      setCapitalAmount('');
+      // Kita perlu reload halaman atau trigger refresh dari parent, 
+      // tapi untuk simplifikasi UX di sini kita reload window agar data fresh
+      window.location.reload(); 
+    } catch (error) {
+      alert('Gagal menyimpan modal');
+      console.error(error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <div className="p-6 max-w-6xl mx-auto">
       <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
          <h2 className="text-2xl font-bold text-gray-800">Buku Kas & Operasional</h2>
          
-         <div className="flex items-center space-x-2 bg-white p-2 rounded-lg shadow-sm border border-gray-200">
-           <Filter size={18} className="text-gray-400" />
-           <input 
-             type="month" 
-             value={selectedMonth}
-             onChange={(e) => setSelectedMonth(e.target.value)}
-             className="border-none outline-none text-sm text-gray-700 font-medium"
-           />
-           <div className="h-6 w-px bg-gray-300 mx-2"></div>
-           <button 
-             onClick={handleExport}
-             className="text-sm font-medium text-green-700 hover:text-green-800 flex items-center gap-1"
-           >
-             <Download size={16} /> Ekspor Excel
-           </button>
+         <div className="flex items-center gap-2">
+            <button 
+              onClick={() => setIsCapitalModalOpen(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 shadow text-sm font-medium"
+            >
+              <PlusCircle size={18} /> Input Modal Awal
+            </button>
+
+            <div className="flex items-center space-x-2 bg-white p-2 rounded-lg shadow-sm border border-gray-200">
+              <Filter size={18} className="text-gray-400" />
+              <input 
+                type="month" 
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="border-none outline-none text-sm text-gray-700 font-medium"
+              />
+              <div className="h-6 w-px bg-gray-300 mx-2"></div>
+              <button 
+                onClick={handleExport}
+                className="text-sm font-medium text-green-700 hover:text-green-800 flex items-center gap-1"
+              >
+                <Download size={16} /> Ekspor
+              </button>
+            </div>
          </div>
       </div>
 
@@ -105,7 +147,9 @@ const Ledger: React.FC<LedgerProps> = ({ data }) => {
                       {new Date(row.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'})}
                     </td>
                     <td className="p-4 text-sm">
-                      <span className="px-2 py-1 bg-gray-100 rounded-full text-xs text-gray-600">{row.kategori}</span>
+                      <span className={`px-2 py-1 rounded-full text-xs ${row.kategori === 'Modal' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
+                        {row.kategori}
+                      </span>
                     </td>
                     <td className="p-4 text-sm text-gray-800">{row.deskripsi}</td>
                     <td className="p-4 text-right font-mono text-sm text-green-600">
@@ -121,6 +165,63 @@ const Ledger: React.FC<LedgerProps> = ({ data }) => {
           </table>
         </div>
       </div>
+
+      {/* Modal Input Modal Awal */}
+      {isCapitalModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+            <div className="p-4 border-b flex justify-between items-center bg-blue-50 rounded-t-xl">
+              <h3 className="text-lg font-bold text-blue-800 flex items-center gap-2">
+                <PlusCircle size={20} /> Input Modal Awal
+              </h3>
+              <button onClick={() => setIsCapitalModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            
+            <form onSubmit={handleSaveCapital} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Jumlah Modal (Rp)</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2 text-gray-500 text-sm">Rp</span>
+                  <input 
+                    required 
+                    type="number" 
+                    min="1"
+                    className="w-full border border-gray-300 rounded-lg p-2 pl-8 font-bold text-lg" 
+                    value={capitalAmount} 
+                    onChange={e => setCapitalAmount(Number(e.target.value))} 
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+
+              <div>
+                 <label className="block text-sm font-medium text-gray-700 mb-1">Keterangan</label>
+                 <input 
+                   required
+                   type="text"
+                   className="w-full border border-gray-300 rounded-lg p-2"
+                   value={capitalDesc}
+                   onChange={e => setCapitalDesc(e.target.value)}
+                   placeholder="Contoh: Modal Awal Januari, Suntikan Dana, dll"
+                 />
+              </div>
+
+              <div className="bg-blue-50 p-3 rounded text-xs text-blue-700">
+                 Catatan: Transaksi ini akan tercatat sebagai Pemasukan (Debit) dengan kategori 'Modal' di Buku Kas.
+              </div>
+
+              <button 
+                type="submit" 
+                disabled={isSaving} 
+                className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 disabled:bg-gray-400 flex justify-center items-center gap-2 shadow-md"
+              >
+                <Save size={18} /> {isSaving ? 'Menyimpan...' : 'Simpan Modal'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

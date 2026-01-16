@@ -78,6 +78,44 @@ function doPost(e) {
       ]);
       result = { status: 'success' };
 
+    } else if (action === 'RESTOCK_PRODUCT') {
+      const iSheet = ss.getSheetByName('Barang');
+      const items = getData(iSheet);
+      // Cari baris barang berdasarkan ID
+      const rowIdx = items.findIndex(i => i.id === payload.id);
+
+      if (rowIdx !== -1) {
+        // 1. Update Stok & Harga Beli di Sheet Barang
+        const currentStock = Number(items[rowIdx].stok);
+        const addedQty = Number(payload.qty);
+        const newStock = currentStock + addedQty;
+        const buyPrice = Number(payload.harga_beli);
+
+        // Kolom Harga Beli (ke-4) dan Stok (ke-6)
+        // Row index + 2 karena header row dan 0-based index
+        iSheet.getRange(rowIdx + 2, 4).setValue(buyPrice); 
+        iSheet.getRange(rowIdx + 2, 6).setValue(newStock);
+        
+        // Reset status pemesanan jika sebelumnya 'ordered'
+        if (items[rowIdx].status_pemesanan === 'ordered') {
+           iSheet.getRange(rowIdx + 2, 8).setValue(''); 
+        }
+
+        // 2. Catat Pengeluaran di Buku Kas
+        const kSheet = ss.getSheetByName('Kas');
+        const kId = Utilities.getUuid();
+        const totalBelanja = addedQty * buyPrice;
+        const deskripsi = `Belanja Stok: ${payload.nama} (${addedQty} pcs)`;
+        const date = new Date();
+        
+        // id, tanggal, deskripsi, debit, kredit, kategori
+        kSheet.appendRow([kId, date, deskripsi, 0, totalBelanja, 'Belanja Stok']);
+        
+        result = { status: 'success', message: 'Stok diperbarui & tercatat di Pengeluaran' };
+      } else {
+        result = { status: 'error', message: 'Barang tidak ditemukan' };
+      }
+
     } else if (action === 'DELETE_PRODUCT') {
       const sheet = ss.getSheetByName('Barang');
       deleteRow(sheet, payload.id);
@@ -113,6 +151,26 @@ function doPost(e) {
       kSheet.appendRow([kId, date, deskripsi, payload.total, 0, 'Penjualan']);
       
       result = { status: 'success', transactionId: tId };
+
+    } else if (action === 'ADD_CAPITAL') {
+      // Input Modal Awal
+      const kSheet = ss.getSheetByName('Kas');
+      const kId = Utilities.getUuid();
+      const date = new Date();
+      // id, tanggal, deskripsi, debit, kredit, kategori
+      kSheet.appendRow([kId, date, payload.deskripsi, payload.jumlah, 0, 'Modal']);
+      
+      result = { status: 'success' };
+
+    } else if (action === 'WITHDRAW_PROFIT') {
+      // Ambil Laba / Prive
+      const kSheet = ss.getSheetByName('Kas');
+      const kId = Utilities.getUuid();
+      const date = new Date();
+      // id, tanggal, deskripsi, debit, kredit, kategori
+      kSheet.appendRow([kId, date, payload.deskripsi, 0, payload.jumlah, 'Prive']);
+      
+      result = { status: 'success' };
     }
   } catch (err) {
     result = { status: 'error', message: err.toString() };

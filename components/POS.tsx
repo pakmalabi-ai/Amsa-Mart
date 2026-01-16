@@ -1,8 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import { Product, CartItem, Transaction } from '../types';
-import { Search, Plus, Minus, Trash2, ShoppingBag, FileText, Download, X, Banknote, CreditCard, Printer, RotateCcw } from 'lucide-react';
+import { Search, Plus, Minus, Trash2, ShoppingBag, FileText, Download, X, Banknote, CreditCard, Printer, RotateCcw, FileDown, AlertCircle, QrCode, Check } from 'lucide-react';
 import { Api } from '../services/api';
 import { exportToExcel } from '../utils/excelExport';
+// @ts-ignore
+import html2pdf from 'html2pdf.js';
 
 interface POSProps {
   inventory: Product[];
@@ -13,10 +15,12 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   
   // State Pembayaran
   const [paymentMethod, setPaymentMethod] = useState<'Tunai' | 'QRIS'>('Tunai');
   const [cashReceived, setCashReceived] = useState<number | ''>('');
+  const [isQrisModalOpen, setIsQrisModalOpen] = useState(false);
   
   // State Transaksi Terakhir (untuk Struk)
   const [lastTransaction, setLastTransaction] = useState<{
@@ -79,16 +83,29 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
     ? cashReceived - totalAmount 
     : 0;
 
+  // Cek apakah uang kurang (untuk validasi visual)
+  const isInsufficientPayment = paymentMethod === 'Tunai' && typeof cashReceived === 'number' && cashReceived < totalAmount;
+
   // Validasi Checkout
   const isCheckoutDisabled = 
     cart.length === 0 || 
     isCheckingOut || 
     (paymentMethod === 'Tunai' && (typeof cashReceived !== 'number' || cashReceived < totalAmount));
 
-  const handleCheckout = async () => {
+  // Fungsi mencegah input karakter negatif
+  const handleInputKeyDown = (evt: React.KeyboardEvent<HTMLInputElement>) => {
+    // Blokir karakter: - (minus), e (exponent), E (exponent)
+    if (['-', 'e', 'E'].includes(evt.key)) {
+      evt.preventDefault();
+    }
+  };
+
+  const handleCheckout = async (skipConfirmation = false) => {
     if (isCheckoutDisabled) return;
 
-    if (!confirm(`Proses transaksi senilai Rp ${totalAmount.toLocaleString()}?`)) return;
+    if (!skipConfirmation) {
+      if (!confirm(`Proses transaksi senilai Rp ${totalAmount.toLocaleString()}?`)) return;
+    }
 
     setIsCheckingOut(true);
     try {
@@ -130,9 +147,53 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
     }
   };
 
+  // Handler tombol Bayar Utama
+  const handlePayButton = () => {
+    if (paymentMethod === 'QRIS') {
+      setIsQrisModalOpen(true);
+    } else {
+      handleCheckout(false);
+    }
+  };
+
   const handleReprint = () => {
     if (lastTransaction) {
       window.print();
+    }
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!lastTransaction) return;
+    
+    setIsGeneratingPdf(true);
+    const element = document.getElementById('printable-receipt');
+    
+    if (element) {
+      try {
+        // Manipulasi DOM sementara agar terlihat oleh html2pdf
+        element.classList.remove('hidden');
+        element.style.display = 'block';
+        element.style.width = '80mm'; // Paksa lebar untuk PDF
+        
+        const opt = {
+          margin: 0,
+          filename: `Struk_${lastTransaction.id}.pdf`,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2, useCORS: true, scrollY: 0 },
+          jsPDF: { unit: 'mm', format: [80, 200], orientation: 'portrait' } 
+        };
+
+        await html2pdf().set(opt).from(element).save();
+      } catch (error) {
+        console.error("Gagal generate PDF", error);
+        alert("Gagal mengunduh PDF");
+      } finally {
+        // Kembalikan ke state hidden
+        element.style.display = ''; 
+        element.style.width = '';
+        element.classList.add('hidden');
+        setIsGeneratingPdf(false);
+      }
     }
   };
 
@@ -168,88 +229,79 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
   return (
     <div className="flex flex-col md:flex-row h-[calc(100vh-4rem)] bg-gray-50 overflow-hidden relative">
       
-      {/* CSS Khusus Print (Struk) */}
+      {/* CSS KHUSUS PRINTER THERMAL */}
       <style>{`
         @media print {
           @page {
-            size: 80mm auto; /* Lebar kertas thermal standar 80mm */
             margin: 0;
+            size: auto; /* Memungkinkan printer thermal menentukan panjang kertas otomatis */
           }
-          body * {
-            visibility: hidden;
-            height: 0;
-            overflow: hidden;
+          body {
+            margin: 0;
+            padding: 0;
+            background-color: white;
+            color: black;
           }
-          #printable-receipt, #printable-receipt * {
-            visibility: visible;
-            height: auto;
-            overflow: visible;
+          /* Sembunyikan elemen aplikasi utama agar tidak memakan tempat/membuat blank page */
+          #root > *:not(#printable-receipt), 
+          .print\\:hidden {
+            display: none !important;
           }
+          /* Tampilkan Struk */
           #printable-receipt {
+            display: block !important;
             position: absolute;
             left: 0;
             top: 0;
-            width: 78mm; /* Sedikit kurang dari 80mm untuk margin aman */
-            padding: 2mm 4mm;
-            background-color: white;
-            color: black;
-            font-family: 'Courier New', Courier, monospace; /* Font monospaced seperti struk */
+            width: 100%; /* Printer driver akan membatasi ini (misal 58mm atau 80mm) */
+            margin: 0;
+            padding: 5px;
+            font-family: 'Courier New', Courier, monospace; /* Font Thermal Standar */
             font-size: 12px;
             line-height: 1.2;
+            color: black;
           }
-          .receipt-divider {
-            border-top: 1px dashed black;
-            margin: 5px 0;
+          /* Hilangkan elemen header/footer default browser jika ada */
+          header, footer {
+            display: none;
           }
-          .receipt-header {
-            text-align: center;
-            margin-bottom: 10px;
-          }
-          .receipt-title {
-            font-size: 16px;
-            font-weight: bold;
-          }
-          .receipt-item {
-            display: flex;
-            justify-content: space-between;
-          }
-          .receipt-footer {
-            text-align: center;
-            margin-top: 10px;
-            font-size: 10px;
-          }
-          .font-bold {
-            font-weight: bold;
+          /* Pastikan warna hitam pekat */
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color: black !important;
           }
         }
       `}</style>
 
-      {/* Komponen Struk Tersembunyi (Hanya muncul saat print) */}
-      <div id="printable-receipt" className="hidden print:block">
+      {/* Komponen Struk (Dioptimalkan untuk Thermal) */}
+      <div id="printable-receipt" className="hidden print:block bg-white p-2 font-mono text-xs text-black leading-tight max-w-[80mm] mx-auto">
         {lastTransaction && (
           <div className="w-full">
-            <div className="receipt-header">
-              <div className="receipt-title">AMSA MART</div>
-              <div>Jl. Merdeka No. 45, Jakarta</div>
-              <div>Telp: 021-555-0123</div>
+            {/* Header */}
+            <div className="text-center mb-2">
+              <div className="text-sm font-bold uppercase tracking-widest">AMSA MART</div>
+              <div className="text-[10px]">Jl. Merdeka No. 45, Jakarta</div>
+              <div className="text-[10px]">Telp: 021-555-0123</div>
             </div>
             
-            <div className="receipt-divider"></div>
+            <div className="border-t border-dashed border-black my-1"></div>
             
-            <div className="flex justify-between">
+            {/* Meta Transaksi */}
+            <div className="flex justify-between text-[10px]">
               <span>{lastTransaction.date.split(' ')[0]}</span>
               <span>{lastTransaction.date.split(' ')[1]}</span>
             </div>
-            <div>No: {lastTransaction.id.substring(0, 12)}</div>
-            <div>Kasir: Admin</div>
+            <div className="text-[10px]">No: {lastTransaction.id.substring(0, 8)}...</div>
             
-            <div className="receipt-divider"></div>
+            <div className="border-t border-dashed border-black my-1"></div>
             
-            <div className="space-y-1">
+            {/* List Item */}
+            <div className="space-y-1 my-2">
               {lastTransaction.items.map((item, idx) => (
-                <div key={idx}>
-                  <div>{item.nama}</div>
-                  <div className="receipt-item">
+                <div key={idx} className="flex flex-col">
+                  <div className="truncate font-medium">{item.nama}</div>
+                  <div className="flex justify-between pl-2">
                     <span>{item.qty} x {item.harga_jual.toLocaleString()}</span>
                     <span>{(item.harga_jual * item.qty).toLocaleString()}</span>
                   </div>
@@ -257,35 +309,37 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
               ))}
             </div>
 
-            <div className="receipt-divider"></div>
+            <div className="border-t border-dashed border-black my-1"></div>
 
-            <div className="receipt-item font-bold" style={{ fontSize: '14px' }}>
+            {/* Total & Pembayaran */}
+            <div className="flex justify-between font-bold text-sm my-1">
               <span>TOTAL</span>
               <span>Rp {lastTransaction.total.toLocaleString()}</span>
             </div>
             
-            <div className="receipt-divider"></div>
+            <div className="border-t border-dashed border-black my-1"></div>
 
-            <div className="receipt-item">
-              <span>Metode Bayar</span>
-              <span>{lastTransaction.paymentMethod}</span>
-            </div>
-            <div className="receipt-item">
-              <span>Bayar</span>
+            <div className="flex justify-between text-[11px]">
+              <span>Bayar ({lastTransaction.paymentMethod})</span>
               <span>Rp {lastTransaction.cash.toLocaleString()}</span>
             </div>
-            <div className="receipt-item">
-              <span>Kembali</span>
-              <span>Rp {lastTransaction.change.toLocaleString()}</span>
-            </div>
+            {lastTransaction.paymentMethod === 'Tunai' && (
+              <div className="flex justify-between text-[11px]">
+                <span>Kembali</span>
+                <span>Rp {lastTransaction.change.toLocaleString()}</span>
+              </div>
+            )}
 
-            <div className="receipt-divider"></div>
+            <div className="border-t border-dashed border-black my-2"></div>
             
-            <div className="receipt-footer">
-              <p>Terima Kasih atas kunjungan Anda</p>
-              <p>Barang yang dibeli tidak dapat ditukar</p>
-              <p>*** LUNAS ***</p>
+            {/* Footer */}
+            <div className="text-center mt-2 text-[10px]">
+              <p>Terima Kasih</p>
+              <p>Barang yg dibeli tdk dpt ditukar</p>
+              <p className="mt-1">*** LUNAS ***</p>
             </div>
+            {/* Spasi bawah untuk printer cutter */}
+            <div className="h-4"></div>
           </div>
         )}
       </div>
@@ -382,14 +436,23 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
             <span className="font-bold text-xl text-blue-600">Rp {totalAmount.toLocaleString()}</span>
           </div>
 
-          {/* Tombol Cetak Ulang (Jika ada transaksi terakhir) */}
+          {/* Tombol Aksi Struk (Cetak Ulang & PDF) */}
           {lastTransaction && cart.length === 0 && (
-             <button 
-               onClick={handleReprint}
-               className="w-full py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded border border-gray-300 flex items-center justify-center gap-2 text-sm"
-             >
-               <RotateCcw size={14} /> Cetak Struk Terakhir / Simpan PDF
-             </button>
+             <div className="grid grid-cols-2 gap-2">
+               <button 
+                 onClick={handleReprint}
+                 className="py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded border border-gray-300 flex items-center justify-center gap-2 text-xs font-semibold"
+               >
+                 <RotateCcw size={14} /> Cetak Ulang
+               </button>
+               <button 
+                 onClick={handleDownloadPdf}
+                 disabled={isGeneratingPdf}
+                 className="py-2 bg-red-50 text-red-700 hover:bg-red-100 rounded border border-red-200 flex items-center justify-center gap-2 text-xs font-semibold disabled:opacity-50"
+               >
+                 <FileDown size={14} /> {isGeneratingPdf ? 'Memproses...' : 'Simpan PDF'}
+               </button>
+             </div>
           )}
 
           {/* Pilihan Metode Pembayaran */}
@@ -417,9 +480,27 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
                   <span className="absolute left-3 top-2.5 text-gray-500 text-sm">Rp</span>
                   <input 
                     type="number" 
+                    min="0"
+                    onKeyDown={handleInputKeyDown}
                     value={cashReceived}
-                    onChange={(e) => setCashReceived(Number(e.target.value))}
-                    className="w-full pl-9 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-bold text-gray-800"
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      // Handle jika user mengosongkan input
+                      if (val === '') {
+                         setCashReceived('');
+                         return;
+                      }
+                      const numVal = parseFloat(val);
+                      // Validasi: Cegah angka negatif
+                      if (numVal >= 0) {
+                        setCashReceived(numVal);
+                      }
+                    }}
+                    className={`w-full pl-9 pr-3 py-2 border rounded-lg focus:ring-2 outline-none font-bold text-gray-800 transition-colors ${
+                       isInsufficientPayment 
+                       ? 'border-red-500 bg-red-50 focus:ring-red-500' 
+                       : 'border-gray-300 focus:ring-blue-500'
+                    }`}
                     placeholder="0"
                   />
                 </div>
@@ -431,15 +512,20 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
                   Rp {changeAmount.toLocaleString()}
                 </span>
               </div>
-              {changeAmount < 0 && (
-                <p className="text-xs text-red-500 text-right">Uang kurang Rp {Math.abs(changeAmount).toLocaleString()}</p>
+              
+              {/* Pesan Validasi Jika Uang Kurang */}
+              {isInsufficientPayment && (
+                <div className="bg-red-50 text-red-600 text-xs p-2 rounded flex items-center mt-1 border border-red-200 animate-pulse">
+                   <AlertCircle size={12} className="mr-1" />
+                   Nominal kurang Rp {Math.abs(changeAmount).toLocaleString()}
+                </div>
               )}
             </div>
           )}
 
           <button
             disabled={isCheckoutDisabled}
-            onClick={handleCheckout}
+            onClick={handlePayButton}
             className={`w-full py-3 rounded-lg font-bold text-white shadow-md transition-all flex justify-center items-center
               ${isCheckoutDisabled ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 active:scale-95'}
             `}
@@ -453,6 +539,55 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
           </button>
         </div>
       </div>
+
+      {/* Modal QRIS */}
+      {isQrisModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4 print:hidden backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col items-center">
+            <div className="bg-blue-600 w-full p-4 text-center">
+              <h3 className="text-white font-bold text-lg flex items-center justify-center gap-2">
+                <QrCode size={24} /> Scan QRIS
+              </h3>
+            </div>
+            
+            <div className="p-6 flex flex-col items-center w-full">
+              <div className="text-gray-500 text-sm mb-1">Total Tagihan</div>
+              <div className="text-3xl font-bold text-gray-800 mb-6">Rp {totalAmount.toLocaleString()}</div>
+              
+              <div className="bg-white p-2 rounded-xl border-2 border-gray-200 shadow-inner mb-6">
+                <img 
+                  src="https://lh3.googleusercontent.com/pw/AP1GczMN-PHjaCppi4UaLDoIjfvL-H5X33qHqjIzvm9CHZ3im3tMXk6DYedEVKuGBaY9GyoeUqNWr5YVBx_CSnMwz0p7x3q6VCOEFjyOot_Y_T4X7w4OqGHC61HNlfo9jQx3opC_Ksb8OSiQPFQ8N9faRclw=w519-h513-s-no-gm?authuser=0" 
+                  alt="QRIS Code" 
+                  className="w-64 h-64 object-contain rounded-lg"
+                />
+              </div>
+
+              <div className="text-center text-xs text-gray-400 mb-6">
+                Scan kode QR di atas menggunakan aplikasi e-wallet atau mobile banking yang mendukung QRIS.
+              </div>
+
+              <div className="grid grid-cols-1 w-full gap-3">
+                <button 
+                  onClick={() => {
+                    setIsQrisModalOpen(false);
+                    // Skip konfirmasi karena user sudah menekan tombol Selesai di QRIS (dianggap sudah bayar)
+                    handleCheckout(true); 
+                  }}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold flex justify-center items-center gap-2 shadow-lg active:scale-95 transition-all"
+                >
+                  <Check size={20} /> Selesai (Pembayaran Diterima)
+                </button>
+                <button 
+                  onClick={() => setIsQrisModalOpen(false)}
+                  className="w-full bg-gray-100 hover:bg-gray-200 text-gray-600 py-3 rounded-xl font-medium"
+                >
+                  Batal
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal Laporan Harian */}
       {isReportOpen && (
