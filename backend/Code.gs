@@ -49,26 +49,31 @@ function doPost(e) {
     const payload = data.payload;
 
     if (action === 'LOGIN') {
-      // LOGIKA LOGIN DARI SHEET USERS
       const uSheet = ss.getSheetByName('Users');
       if (!uSheet) {
-        throw new Error("Sheet 'Users' tidak ditemukan. Buat tab 'Users' dulu.");
+        throw new Error("Sheet 'Users' tidak ditemukan. Pastikan nama tab persis 'Users' (Huruf besar U).");
       }
       
       const usersData = uSheet.getDataRange().getValues(); // [username, password, role]
-      // Skip header (i=1)
       let foundUser = null;
       
-      const inputUser = String(payload.username).trim().toLowerCase();
-      const inputPass = String(payload.password).trim(); // Ini adalah Hash dari frontend
+      // Normalisasi Input dari Frontend (Hapus spasi, lowercase username)
+      const inputUser = String(payload.username).toLowerCase().replace(/\s/g, '');
+      const inputPass = String(payload.password).replace(/\s/g, '');
 
+      // Loop database (Mulai index 1 untuk skip header)
       for (let i = 1; i < usersData.length; i++) {
-        const dbUser = String(usersData[i][0]).trim().toLowerCase();
-        const dbPass = String(usersData[i][1]).trim();
+        // Ambil data dari sheet dan bersihkan sebersih-bersihnya
+        // replace(/\s/g, '') akan menghapus semua spasi, enter, atau tab yang tidak sengaja ter-copy
+        const dbUser = String(usersData[i][0]).toLowerCase().replace(/\s/g, '');
+        const dbPass = String(usersData[i][1]).replace(/\s/g, ''); // Hash di sheet
+        
+        // Debugging di Server Side (Bisa dilihat di Executions log Google Script)
+        // Logger.log(`Try Match: Input(${inputUser}) vs DB(${dbUser})`);
         
         if (dbUser === inputUser && dbPass === inputPass) {
           foundUser = {
-            username: usersData[i][0],
+            username: usersData[i][0], // Kembalikan username asli (display name)
             role: usersData[i][2]
           };
           break;
@@ -78,7 +83,7 @@ function doPost(e) {
       if (foundUser) {
         result = { status: 'success', user: foundUser };
       } else {
-        result = { status: 'error', message: 'Username atau Password salah' };
+        result = { status: 'error', message: 'Username atau Password salah. Cek data di Sheet Users.' };
       }
 
     } else if (action === 'ADD_PRODUCT') {

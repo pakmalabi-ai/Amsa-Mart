@@ -28,26 +28,30 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setIsLoading(true);
 
     try {
-      const cleanUsername = username.trim();
+      // Normalisasi di frontend juga: Username Lowercase, Trim Password
+      const cleanUsername = username.trim().toLowerCase();
       const cleanPassword = password.trim(); 
 
-      // 1. Hash password di sisi Client sebelum dikirim ke API
-      // Ini menjaga keamanan agar password asli tidak dikirim via network
+      // 1. Hash password di sisi Client
       const inputHash = await sha256(cleanPassword);
       
-      // 2. Kirim ke API (Backend Google Sheet) untuk dicek
-      // Backend akan mencocokkan hash yang dikirim dengan hash yang ada di Sheet 'Users'
+      // DEBUG: Lihat hash ini di Console Browser (F12). 
+      // Jika login gagal, copy hash dari console dan paste ke kolom password di Google Sheet.
+      console.log("=== DEBUG LOGIN ===");
+      console.log("Username:", cleanUsername);
+      console.log("Password Hash:", inputHash);
+      
+      // 2. Kirim ke API
       const response = await Api.postData('LOGIN', {
         username: cleanUsername,
         password: inputHash
       });
 
       if (response && response.status === 'success' && response.user) {
-         // Login Berhasil
          onLogin(response.user);
       } else {
-         // Login Gagal (Response dari backend: error atau user tidak ditemukan)
-         setError(response.message || 'Username atau password salah!');
+         // Jika gagal, tampilkan pesan dari server atau pesan default
+         setError(response.message || 'Username atau password salah! Periksa Google Sheet Users.');
       }
 
     } catch (err) {
