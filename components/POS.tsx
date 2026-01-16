@@ -3,8 +3,9 @@ import { Product, CartItem, Transaction } from '../types';
 import { Search, Plus, Minus, Trash2, ShoppingBag, FileText, Download, X, Banknote, CreditCard, Printer, RotateCcw, FileDown, AlertCircle, QrCode, Check } from 'lucide-react';
 import { Api } from '../services/api';
 import { exportToExcel } from '../utils/excelExport';
-// @ts-ignore
-import html2pdf from 'html2pdf.js';
+
+// Import html2pdf dihapus untuk mencegah error build, kita gunakan window.html2pdf dari CDN
+// import html2pdf from 'html2pdf.js';
 
 interface POSProps {
   inventory: Product[];
@@ -165,6 +166,15 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
   const handleDownloadPdf = async () => {
     if (!lastTransaction) return;
     
+    // Gunakan window.html2pdf dari CDN
+    // @ts-ignore
+    const html2pdf = window.html2pdf;
+
+    if (!html2pdf) {
+      alert("Library PDF gagal dimuat. Pastikan koneksi internet aktif dan refresh halaman.");
+      return;
+    }
+
     setIsGeneratingPdf(true);
     const element = document.getElementById('printable-receipt');
     
