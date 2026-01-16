@@ -103,12 +103,6 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
               {isLoading ? 'Memverifikasi...' : 'Masuk Aplikasi'}
             </button>
           </form>
-
-          <div className="mt-8 pt-4 border-t border-gray-100 text-center">
-            <p className="text-xs text-gray-400 mb-2">
-              Pastikan sheet <strong>Users</strong> sudah diisi di Google Spreadsheet.
-            </p>
-          </div>
           
           <div className="mt-6 text-center text-xs text-gray-400">
             &copy; {new Date().getFullYear()} Amsa Mart System <br/>
