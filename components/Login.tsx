@@ -35,22 +35,28 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setIsLoading(true);
 
     try {
+      // Normalisasi Input:
+      // 1. Username jadi lowercase & trim spasi
+      // 2. Password di-trim spasi (untuk menghindari error copy-paste)
+      const cleanUsername = username.trim().toLowerCase();
+      const cleanPassword = password.trim(); 
+
       // Hash input password pengguna sebelum dibandingkan
-      const inputHash = await sha256(password);
+      const inputHash = await sha256(cleanPassword);
       
       // Bandingkan Hash vs Hash (Bukan text vs text)
-      if (username === 'admin' && inputHash === CREDENTIALS.ADMIN_HASH) {
+      if (cleanUsername === 'admin' && inputHash === CREDENTIALS.ADMIN_HASH) {
         onLogin({ username: 'Admin', role: 'admin' });
-      } else if (username === 'kasir' && inputHash === CREDENTIALS.KASIR_HASH) {
+      } else if (cleanUsername === 'kasir' && inputHash === CREDENTIALS.KASIR_HASH) {
         onLogin({ username: 'Kasir', role: 'kasir' });
-      } else if (username === 'manager' && inputHash === CREDENTIALS.MANAGER_HASH) {
+      } else if (cleanUsername === 'manager' && inputHash === CREDENTIALS.MANAGER_HASH) {
         onLogin({ username: 'Manager', role: 'manager' });
       } else {
         setError('Username atau password salah!');
       }
     } catch (err) {
       console.error(err);
-      setError('Terjadi kesalahan enkripsi browser.');
+      setError('Terjadi kesalahan enkripsi browser. Pastikan menggunakan HTTPS atau Localhost.');
     } finally {
       setIsLoading(false);
     }
