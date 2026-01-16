@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User } from '../types';
-import { Lock, User as UserIcon, Store } from 'lucide-react';
+import { Lock, User as UserIcon, Store, HelpCircle, Copy, Check } from 'lucide-react';
 import { Api } from '../services/api';
 
 interface LoginProps {
@@ -21,6 +21,32 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  
+  // State untuk Debugging Hash
+  const [debugHash, setDebugHash] = useState('');
+  const [showDebug, setShowDebug] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  // Effect untuk generate hash realtime saat user mengetik
+  useEffect(() => {
+    const generateHash = async () => {
+      if (password) {
+        const hash = await sha256(password.trim());
+        setDebugHash(hash);
+      } else {
+        setDebugHash('');
+      }
+    };
+    generateHash();
+  }, [password]);
+
+  const handleCopyHash = () => {
+    if (debugHash) {
+      navigator.clipboard.writeText(debugHash);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,20 +54,15 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setIsLoading(true);
 
     try {
-      // Normalisasi di frontend juga: Username Lowercase, Trim Password
       const cleanUsername = username.trim().toLowerCase();
-      const cleanPassword = password.trim(); 
+      
+      // Gunakan hash yang sudah dihitung di state
+      const inputHash = debugHash || await sha256(password.trim());
+      
+      console.log("=== LOGIN ATTEMPT ===");
+      console.log("User:", cleanUsername);
+      console.log("Pass Hash:", inputHash);
 
-      // 1. Hash password di sisi Client
-      const inputHash = await sha256(cleanPassword);
-      
-      // DEBUG: Lihat hash ini di Console Browser (F12). 
-      // Jika login gagal, copy hash dari console dan paste ke kolom password di Google Sheet.
-      console.log("=== DEBUG LOGIN ===");
-      console.log("Username:", cleanUsername);
-      console.log("Password Hash:", inputHash);
-      
-      // 2. Kirim ke API
       const response = await Api.postData('LOGIN', {
         username: cleanUsername,
         password: inputHash
@@ -50,13 +71,14 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       if (response && response.status === 'success' && response.user) {
          onLogin(response.user);
       } else {
-         // Jika gagal, tampilkan pesan dari server atau pesan default
-         setError(response.message || 'Username atau password salah! Periksa Google Sheet Users.');
+         setError(response.message || 'Gagal Login. Pastikan Hash di Sheet Users sesuai dengan Hash di bawah ini.');
+         // Otomatis munculkan debug jika gagal
+         setShowDebug(true);
       }
 
     } catch (err) {
       console.error(err);
-      setError('Gagal menghubungi server. Periksa koneksi internet atau URL API.');
+      setError('Gagal menghubungi server. Periksa URL API di Pengaturan.');
     } finally {
       setIsLoading(false);
     }
@@ -65,12 +87,20 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
-        <div className="bg-blue-600 p-8 text-center text-white">
+        <div className="bg-blue-600 p-8 text-center text-white relative">
           <div className="mx-auto bg-blue-500 w-16 h-16 rounded-full flex items-center justify-center mb-4 shadow-inner">
             <Store size={32} />
           </div>
           <h1 className="text-2xl font-bold">Amsa Mart</h1>
-          <p className="text-blue-100">Silakan login untuk melanjutkan</p>
+          <p className="text-blue-100">Sistem Manajemen Toko</p>
+          
+          <button 
+            onClick={() => setShowDebug(!showDebug)}
+            className="absolute top-4 right-4 text-blue-300 hover:text-white"
+            title="Bantuan Login"
+          >
+            <HelpCircle size={20} />
+          </button>
         </div>
 
         <div className="p-8">
@@ -93,7 +123,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                  placeholder="Masukkan username"
+                  placeholder="Contoh: admin"
                   autoComplete="username"
                 />
               </div>
@@ -116,6 +146,27 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 />
               </div>
             </div>
+
+            {/* AREA DEBUG HASH */}
+            {showDebug && password && (
+              <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200 text-xs">
+                <p className="font-bold text-yellow-800 mb-1">Kode Hash Password Anda:</p>
+                <div className="bg-white p-2 border border-gray-200 rounded break-all font-mono text-gray-600 mb-2 select-all">
+                  {debugHash}
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-500">Copy kode di atas ke kolom 'password' di Google Sheet agar login berhasil.</span>
+                  <button 
+                    type="button"
+                    onClick={handleCopyHash}
+                    className="flex items-center gap-1 bg-white border border-gray-300 px-2 py-1 rounded hover:bg-gray-50 transition-colors text-gray-700 font-medium"
+                  >
+                    {copied ? <Check size={14} className="text-green-600"/> : <Copy size={14}/>}
+                    {copied ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+              </div>
+            )}
 
             <button
               type="submit"
