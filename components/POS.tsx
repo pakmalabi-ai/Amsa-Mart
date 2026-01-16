@@ -4,9 +4,6 @@ import { Search, Plus, Minus, Trash2, ShoppingBag, FileText, Download, X, Bankno
 import { Api } from '../services/api';
 import { exportToExcel } from '../utils/excelExport';
 
-// Import html2pdf dihapus untuk mencegah error build, kita gunakan window.html2pdf dari CDN
-// import html2pdf from 'html2pdf.js';
-
 interface POSProps {
   inventory: Product[];
   refreshData: () => void;
@@ -24,7 +21,6 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
   const [isQrisModalOpen, setIsQrisModalOpen] = useState(false);
 
   // State Tanggal Transaksi (Backdate)
-  // Default: Hari ini (YYYY-MM-DD)
   const [transactionDate, setTransactionDate] = useState<string>(new Date().toISOString().split('T')[0]);
   
   // State Transaksi Terakhir (untuk Struk)
@@ -58,7 +54,7 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
     setCart(prev => {
       const existing = prev.find(item => item.id === product.id);
       if (existing) {
-        if (existing.qty >= product.stok) return prev; // Max stock limit
+        if (existing.qty >= product.stok) return prev; 
         return prev.map(item => item.id === product.id ? { ...item, qty: item.qty + 1 } : item);
       }
       return [...prev, { ...product, qty: 1 }];
@@ -69,7 +65,7 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
     setCart(prev => prev.map(item => {
       if (item.id === id) {
         const newQty = Math.max(0, item.qty + delta);
-        if (newQty > item.stok) return item; // Cannot exceed stock
+        if (newQty > item.stok) return item; 
         return { ...item, qty: newQty };
       }
       return item;
@@ -83,23 +79,18 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
   const totalAmount = cart.reduce((sum, item) => sum + (item.harga_jual * item.qty), 0);
   const totalQty = cart.reduce((sum, item) => sum + item.qty, 0);
 
-  // Hitung Kembalian
   const changeAmount = paymentMethod === 'Tunai' && typeof cashReceived === 'number' 
     ? cashReceived - totalAmount 
     : 0;
 
-  // Cek apakah uang kurang (untuk validasi visual)
   const isInsufficientPayment = paymentMethod === 'Tunai' && typeof cashReceived === 'number' && cashReceived < totalAmount;
 
-  // Validasi Checkout
   const isCheckoutDisabled = 
     cart.length === 0 || 
     isCheckingOut || 
     (paymentMethod === 'Tunai' && (typeof cashReceived !== 'number' || cashReceived < totalAmount));
 
-  // Fungsi mencegah input karakter negatif
   const handleInputKeyDown = (evt: React.KeyboardEvent<HTMLInputElement>) => {
-    // Blokir karakter: - (minus), e (exponent), E (exponent)
     if (['-', 'e', 'E'].includes(evt.key)) {
       evt.preventDefault();
     }
@@ -108,7 +99,6 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
   const handleCheckout = async (skipConfirmation = false) => {
     if (isCheckoutDisabled) return;
 
-    // Pesan konfirmasi jika tanggal bukan hari ini
     const today = new Date().toISOString().split('T')[0];
     const isBackdate = transactionDate !== today;
     const backdateMsg = isBackdate ? `\n(Tgl Transaksi: ${transactionDate})` : '';
@@ -123,11 +113,9 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
         items: cart.map(i => ({ id: i.id, qty: i.qty, nama: i.nama, harga: i.harga_jual })),
         total: totalAmount,
         paymentMethod: paymentMethod,
-        customDate: transactionDate // Kirim tanggal custom ke backend
+        customDate: transactionDate
       });
 
-      // Siapkan Data Struk
-      // Gunakan transactionDate untuk tampilan di struk jika backdate
       const displayDate = isBackdate 
          ? new Date(transactionDate).toLocaleDateString('id-ID') + ' (Backdate)'
          : new Date().toLocaleString('id-ID');
@@ -143,15 +131,12 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
       };
       
       setLastTransaction(transactionData);
-      
-      // Reset POS (Biarkan tanggal tetap sesuai pilihan terakhir atau reset ke hari ini? Biasanya reset ke hari ini lebih aman)
       setCart([]);
       setCashReceived('');
       setPaymentMethod('Tunai');
-      // setTransactionDate(today); // Uncomment jika ingin auto-reset tanggal ke hari ini
       refreshData();
       
-      // Auto Print (Delay sedikit agar DOM render)
+      // Auto Print
       setTimeout(() => {
         window.print();
       }, 500);
@@ -164,7 +149,6 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
     }
   };
 
-  // Handler tombol Bayar Utama
   const handlePayButton = () => {
     if (paymentMethod === 'QRIS') {
       setIsQrisModalOpen(true);
@@ -179,10 +163,11 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
     }
   };
 
+  // Fungsi Generate PDF Struk
   const handleDownloadPdf = async () => {
     if (!lastTransaction) return;
     
-    // Gunakan window.html2pdf dari CDN
+    // Menggunakan window.html2pdf dari CDN
     // @ts-ignore
     const html2pdf = window.html2pdf;
 
@@ -196,16 +181,17 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
     
     if (element) {
       try {
-        // Manipulasi DOM sementara agar terlihat oleh html2pdf
+        // Tampilkan elemen sementara untuk dicapture oleh html2pdf
         element.classList.remove('hidden');
         element.style.display = 'block';
-        element.style.width = '80mm'; // Paksa lebar untuk PDF
+        element.style.width = '80mm'; // Lebar standar struk thermal
         
         const opt = {
           margin: 0,
           filename: `Struk_${lastTransaction.id}.pdf`,
           image: { type: 'jpeg', quality: 0.98 },
           html2canvas: { scale: 2, useCORS: true, scrollY: 0 },
+          // Atur format kertas custom agar panjang menyesuaikan atau setidaknya cukup panjang
           jsPDF: { unit: 'mm', format: [80, 200], orientation: 'portrait' } 
         };
 
@@ -214,7 +200,7 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
         console.error("Gagal generate PDF", error);
         alert("Gagal mengunduh PDF");
       } finally {
-        // Kembalikan ke state hidden
+        // Sembunyikan kembali
         element.style.display = ''; 
         element.style.width = '';
         element.classList.add('hidden');
@@ -229,9 +215,7 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
     try {
       const allTrans = await Api.getTransactions();
       const today = new Date().toDateString();
-      // Filter transaksi hari ini
       const todays = allTrans.filter(t => new Date(t.tanggal).toDateString() === today);
-      // Sort terbaru diatas
       setDailyTransactions(todays.sort((a,b) => new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime()));
     } catch (e) {
       console.error(e);
@@ -243,9 +227,7 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
 
   const handleExportDaily = () => {
     const dataToExport = dailyTransactions.map(t => {
-      // Backward compatibility: Jika metode_pembayaran tidak ada (data lama), gunakan t.tipe
       const metode = t.metode_pembayaran || t.tipe;
-      
       return {
         ID: t.id,
         Tanggal: new Date(t.tanggal).toLocaleString('id-ID'),
@@ -266,7 +248,7 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
         @media print {
           @page {
             margin: 0;
-            size: auto; /* Memungkinkan printer thermal menentukan panjang kertas otomatis */
+            size: auto;
           }
           body {
             margin: 0;
@@ -274,30 +256,26 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
             background-color: white;
             color: black;
           }
-          /* Sembunyikan elemen aplikasi utama agar tidak memakan tempat/membuat blank page */
           #root > *:not(#printable-receipt), 
           .print\\:hidden {
             display: none !important;
           }
-          /* Tampilkan Struk */
           #printable-receipt {
             display: block !important;
             position: absolute;
             left: 0;
             top: 0;
-            width: 100%; /* Printer driver akan membatasi ini (misal 58mm atau 80mm) */
+            width: 100%;
             margin: 0;
             padding: 5px;
-            font-family: 'Courier New', Courier, monospace; /* Font Thermal Standar */
+            font-family: 'Courier New', Courier, monospace;
             font-size: 12px;
             line-height: 1.2;
             color: black;
           }
-          /* Hilangkan elemen header/footer default browser jika ada */
           header, footer {
             display: none;
           }
-          /* Pastikan warna hitam pekat */
           * {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
@@ -306,11 +284,10 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
         }
       `}</style>
 
-      {/* Komponen Struk (Dioptimalkan untuk Thermal) */}
+      {/* Komponen Struk (Hidden secara default, visible saat Print/PDF) */}
       <div id="printable-receipt" className="hidden print:block bg-white p-2 font-mono text-xs text-black leading-tight max-w-[80mm] mx-auto">
         {lastTransaction && (
           <div className="w-full">
-            {/* Header */}
             <div className="text-center mb-2">
               <div className="text-sm font-bold uppercase tracking-widest">AMSA MART</div>
               <div className="text-[10px]">Jl. Merdeka No. 45, Jakarta</div>
@@ -319,16 +296,13 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
             
             <div className="border-t border-dashed border-black my-1"></div>
             
-            {/* Meta Transaksi */}
             <div className="flex justify-between text-[10px]">
-              {/* Jika tanggal ada kata Backdate, parsing manual, jika tidak split string biasa */}
               <span>{lastTransaction.date}</span>
             </div>
             <div className="text-[10px]">No: {lastTransaction.id.substring(0, 8)}...</div>
             
             <div className="border-t border-dashed border-black my-1"></div>
             
-            {/* List Item */}
             <div className="space-y-1 my-2">
               {lastTransaction.items.map((item, idx) => (
                 <div key={idx} className="flex flex-col">
@@ -343,7 +317,6 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
 
             <div className="border-t border-dashed border-black my-1"></div>
 
-            {/* Total & Pembayaran */}
             <div className="flex justify-between font-bold text-sm my-1">
               <span>TOTAL</span>
               <span>Rp {lastTransaction.total.toLocaleString()}</span>
@@ -364,19 +337,17 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
 
             <div className="border-t border-dashed border-black my-2"></div>
             
-            {/* Footer */}
             <div className="text-center mt-2 text-[10px]">
               <p>Terima Kasih</p>
               <p>Barang yg dibeli tdk dpt ditukar</p>
               <p className="mt-1">*** LUNAS ***</p>
             </div>
-            {/* Spasi bawah untuk printer cutter */}
             <div className="h-4"></div>
           </div>
         )}
       </div>
 
-      {/* Product Grid (Disembunyikan saat Print) */}
+      {/* Product Grid */}
       <div className="flex-1 p-4 overflow-y-auto print:hidden">
         <div className="mb-4 flex gap-2">
           <div className="relative flex-1">
@@ -420,7 +391,7 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
         </div>
       </div>
 
-      {/* Cart Sidebar (Disembunyikan saat Print) */}
+      {/* Cart Sidebar */}
       <div className="w-full md:w-96 bg-white shadow-xl flex flex-col border-l border-gray-200 print:hidden">
         <div className="p-4 bg-blue-50 border-b border-blue-100 flex items-center justify-between">
           <h2 className="font-bold text-lg text-blue-800 flex items-center">
@@ -429,7 +400,6 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
           <span className="bg-blue-200 text-blue-800 text-xs px-2 py-1 rounded-full">{cart.length} Item</span>
         </div>
         
-        {/* INPUT TANGGAL TRANSAKSI (Backdate) */}
         <div className="px-4 py-3 bg-white border-b border-gray-100">
            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-1">
              <Calendar size={10} /> Tanggal Transaksi
@@ -481,7 +451,7 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
             <span className="font-bold text-xl text-blue-600">Rp {totalAmount.toLocaleString()}</span>
           </div>
 
-          {/* Tombol Aksi Struk (Cetak Ulang & PDF) */}
+          {/* Tombol Aksi Struk: Cetak Ulang & PDF */}
           {lastTransaction && cart.length === 0 && (
              <div className="flex flex-col gap-2">
                <button 
@@ -530,13 +500,11 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
                     value={cashReceived}
                     onChange={(e) => {
                       const val = e.target.value;
-                      // Handle jika user mengosongkan input
                       if (val === '') {
                          setCashReceived('');
                          return;
                       }
                       const numVal = parseFloat(val);
-                      // Validasi: Cegah angka negatif
                       if (numVal >= 0) {
                         setCashReceived(numVal);
                       }
@@ -558,7 +526,6 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
                 </span>
               </div>
               
-              {/* Pesan Validasi Jika Uang Kurang */}
               {isInsufficientPayment && (
                 <div className="bg-red-50 text-red-600 text-xs p-2 rounded flex items-center mt-1 border border-red-200 animate-pulse">
                    <AlertCircle size={12} className="mr-1" />
@@ -585,7 +552,7 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
         </div>
       </div>
 
-      {/* Modal QRIS */}
+      {/* Modal QRIS & Report (Sama seperti sebelumnya) */}
       {isQrisModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4 print:hidden backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col items-center">
@@ -615,7 +582,6 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
                 <button 
                   onClick={() => {
                     setIsQrisModalOpen(false);
-                    // Skip konfirmasi karena user sudah menekan tombol Selesai di QRIS (dianggap sudah bayar)
                     handleCheckout(true); 
                   }}
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold flex justify-center items-center gap-2 shadow-lg active:scale-95 transition-all"
@@ -634,7 +600,6 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
         </div>
       )}
 
-      {/* Modal Laporan Harian */}
       {isReportOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 print:hidden">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl h-[80vh] flex flex-col">
@@ -673,9 +638,7 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-sm">
                     {dailyTransactions.map(t => {
-                      // Logic Backward Compatibility untuk data lama vs baru
                       const metode = t.metode_pembayaran || t.tipe;
-                      
                       return (
                         <tr key={t.id} className="hover:bg-gray-50">
                           <td className="p-3">{new Date(t.tanggal).toLocaleTimeString('id-ID')}</td>
