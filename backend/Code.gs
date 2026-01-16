@@ -68,7 +68,10 @@ function doPost(e) {
       const tSheet = ss.getSheetByName('Transaksi');
       const tId = Utilities.getUuid();
       const date = new Date();
-      tSheet.appendRow([tId, date, JSON.stringify(payload.items), payload.total, 'SALE']);
+      // Ambil metode pembayaran, default ke Tunai jika tidak ada
+      const paymentType = payload.paymentMethod || 'Tunai';
+      
+      tSheet.appendRow([tId, date, JSON.stringify(payload.items), payload.total, paymentType]);
 
       // 2. Kurangi Stok
       const iSheet = ss.getSheetByName('Barang');
@@ -86,7 +89,8 @@ function doPost(e) {
       // 3. Masuk Buku Kas (Debit)
       const kSheet = ss.getSheetByName('Kas');
       const kId = Utilities.getUuid();
-      kSheet.appendRow([kId, date, 'Penjualan POS', payload.total, 0, 'Penjualan']);
+      const deskripsi = `Penjualan POS (${paymentType})`;
+      kSheet.appendRow([kId, date, deskripsi, payload.total, 0, 'Penjualan']);
       
       result = { status: 'success', transactionId: tId };
     }

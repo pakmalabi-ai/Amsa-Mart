@@ -115,7 +115,7 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 font-sans text-gray-900">
+    <div className="min-h-screen bg-gray-100 font-sans text-gray-900 flex flex-col">
       <Navbar 
         currentView={currentView} 
         setView={setCurrentView} 
@@ -124,9 +124,13 @@ function App() {
         onLogout={handleLogout}
       />
       
-      <main>
+      <main className="flex-grow">
         {renderContent()}
       </main>
+
+      <footer className="bg-gray-50 border-t border-gray-200 py-4 text-center text-xs text-gray-500 print:hidden">
+        Dikembangkan oleh : MWS AI Studio
+      </footer>
 
       {/* Modal Settings hanya dirender jika Admin */}
       {user.role === 'admin' && (
