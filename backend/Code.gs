@@ -50,7 +50,6 @@ function doPost(e) {
     if (action === 'ADD_PRODUCT') {
       const sheet = ss.getSheetByName('Barang');
       const id = Utilities.getUuid();
-      // Menambahkan status_pemesanan (default kosong)
       sheet.appendRow([
         id, 
         payload.kode, 
@@ -65,7 +64,6 @@ function doPost(e) {
       
     } else if (action === 'UPDATE_PRODUCT') {
       const sheet = ss.getSheetByName('Barang');
-      // Update termasuk status_pemesanan
       updateRow(sheet, payload.id, [
         payload.id, 
         payload.kode, 
@@ -79,41 +77,56 @@ function doPost(e) {
       result = { status: 'success' };
 
     } else if (action === 'RESTOCK_PRODUCT') {
+      // LOGIKA BARU: Lebih robust untuk Restock
       const iSheet = ss.getSheetByName('Barang');
-      const items = getData(iSheet);
-      // Cari baris barang berdasarkan ID
-      const rowIdx = items.findIndex(i => i.id === payload.id);
+      const kSheet = ss.getSheetByName('Kas');
+      
+      if (!iSheet || !kSheet) throw new Error("Sheet 'Barang' atau 'Kas' tidak ditemukan.");
 
-      if (rowIdx !== -1) {
-        // 1. Update Stok & Harga Beli di Sheet Barang
-        const currentStock = Number(items[rowIdx].stok);
-        const addedQty = Number(payload.qty);
-        const newStock = currentStock + addedQty;
+      // Ambil semua data barang untuk mencari ID
+      const dataBarang = iSheet.getDataRange().getValues();
+      let rowIndex = -1;
+      
+      // Loop cari ID (mulai index 1 untuk skip header)
+      for (let i = 1; i < dataBarang.length; i++) {
+        if (String(dataBarang[i][0]) === String(payload.id)) {
+          rowIndex = i;
+          break;
+        }
+      }
+
+      if (rowIndex !== -1) {
+        // Baris di Excel = rowIndex + 1 (karena array 0-based)
+        const sheetRow = rowIndex + 1;
+
+        // Ambil stok lama & hitung baru
+        // Col 6 di Excel = Index 5 di Array
+        const currentStock = Number(dataBarang[rowIndex][5]) || 0; 
+        const qtyToAdd = Number(payload.qty) || 0;
+        const newStock = currentStock + qtyToAdd;
         const buyPrice = Number(payload.harga_beli);
 
-        // Kolom Harga Beli (ke-4) dan Stok (ke-6)
-        // Row index + 2 karena header row dan 0-based index
-        iSheet.getRange(rowIdx + 2, 4).setValue(buyPrice); 
-        iSheet.getRange(rowIdx + 2, 6).setValue(newStock);
-        
-        // Reset status pemesanan jika sebelumnya 'ordered'
-        if (items[rowIdx].status_pemesanan === 'ordered') {
-           iSheet.getRange(rowIdx + 2, 8).setValue(''); 
+        // 1. Update Stok (Kolom 6) dan Harga Beli (Kolom 4)
+        iSheet.getRange(sheetRow, 6).setValue(newStock); 
+        iSheet.getRange(sheetRow, 4).setValue(buyPrice); 
+
+        // Reset status pemesanan jika sebelumnya 'ordered' (Kolom 8)
+        if (dataBarang[rowIndex][7] === 'ordered') {
+           iSheet.getRange(sheetRow, 8).setValue(''); 
         }
 
         // 2. Catat Pengeluaran di Buku Kas
-        const kSheet = ss.getSheetByName('Kas');
         const kId = Utilities.getUuid();
-        const totalBelanja = addedQty * buyPrice;
-        const deskripsi = `Belanja Stok: ${payload.nama} (${addedQty} pcs)`;
+        const totalBelanja = qtyToAdd * buyPrice;
+        const deskripsi = `Belanja Stok: ${payload.nama} (${qtyToAdd} pcs)`;
         const date = new Date();
         
-        // id, tanggal, deskripsi, debit, kredit, kategori
+        // Format Kas: id, tanggal, deskripsi, debit, kredit, kategori
         kSheet.appendRow([kId, date, deskripsi, 0, totalBelanja, 'Belanja Stok']);
         
         result = { status: 'success', message: 'Stok diperbarui & tercatat di Pengeluaran' };
       } else {
-        result = { status: 'error', message: 'Barang tidak ditemukan' };
+        result = { status: 'error', message: 'Barang tidak ditemukan (ID mismatch)' };
       }
 
     } else if (action === 'DELETE_PRODUCT') {
@@ -122,38 +135,40 @@ function doPost(e) {
       result = { status: 'success' };
 
     } else if (action === 'CHECKOUT') {
-      // 1. Catat Transaksi
       const tSheet = ss.getSheetByName('Transaksi');
+      const iSheet = ss.getSheetByName('Barang');
+      const kSheet = ss.getSheetByName('Kas');
+
       const tId = Utilities.getUuid();
       const date = new Date();
-      // Ambil metode pembayaran, default ke Tunai jika tidak ada
       const paymentType = payload.paymentMethod || 'Tunai';
       
-      // PERUBAHAN: Menambahkan 'Penjualan' sebagai tipe, dan paymentType sebagai metode_pembayaran
+      // 1. Catat Transaksi
       tSheet.appendRow([
         tId, 
         date, 
         JSON.stringify(payload.items), 
         payload.total, 
-        'Penjualan', // Kolom Tipe
-        paymentType  // Kolom Metode Pembayaran
+        'Penjualan', 
+        paymentType
       ]);
 
-      // 2. Kurangi Stok
-      const iSheet = ss.getSheetByName('Barang');
-      const items = getData(iSheet);
+      // 2. Kurangi Stok (Looping manual agar aman)
+      const dataBarang = iSheet.getDataRange().getValues();
+      
       payload.items.forEach(cartItem => {
-        const rowIdx = items.findIndex(i => i.id === cartItem.id);
-        if (rowIdx !== -1) {
-          // Baris di sheet = rowIdx + 2 (karena header + index 0-based)
-          // Kolom Stok ada di index 5 (A=0, F=5) -> Column 6
-          const currentStock = items[rowIdx].stok;
-          iSheet.getRange(rowIdx + 2, 6).setValue(currentStock - cartItem.qty);
+        for (let i = 1; i < dataBarang.length; i++) {
+          if (String(dataBarang[i][0]) === String(cartItem.id)) {
+            const currentStok = Number(dataBarang[i][5]) || 0;
+            const newStok = currentStok - cartItem.qty;
+            // Update stok di baris yang sesuai (Kolom 6)
+            iSheet.getRange(i + 1, 6).setValue(newStok);
+            break; 
+          }
         }
       });
 
       // 3. Masuk Buku Kas (Debit)
-      const kSheet = ss.getSheetByName('Kas');
       const kId = Utilities.getUuid();
       const deskripsi = `Penjualan POS (${paymentType})`;
       kSheet.appendRow([kId, date, deskripsi, payload.total, 0, 'Penjualan']);
@@ -161,25 +176,20 @@ function doPost(e) {
       result = { status: 'success', transactionId: tId };
 
     } else if (action === 'ADD_CAPITAL') {
-      // Input Modal Awal
       const kSheet = ss.getSheetByName('Kas');
       const kId = Utilities.getUuid();
       const date = new Date();
-      // id, tanggal, deskripsi, debit, kredit, kategori
       kSheet.appendRow([kId, date, payload.deskripsi, payload.jumlah, 0, 'Modal']);
-      
       result = { status: 'success' };
 
     } else if (action === 'WITHDRAW_PROFIT') {
-      // Ambil Laba / Prive
       const kSheet = ss.getSheetByName('Kas');
       const kId = Utilities.getUuid();
       const date = new Date();
-      // id, tanggal, deskripsi, debit, kredit, kategori
       kSheet.appendRow([kId, date, payload.deskripsi, 0, payload.jumlah, 'Prive']);
-      
       result = { status: 'success' };
     }
+
   } catch (err) {
     result = { status: 'error', message: err.toString() };
   }
@@ -190,7 +200,9 @@ function doPost(e) {
 
 // Helpers
 function getData(sheet) {
+  if (!sheet) return [];
   const rows = sheet.getDataRange().getValues();
+  if (rows.length < 1) return [];
   const headers = rows[0];
   return rows.slice(1).map(row => {
     let obj = {};
@@ -202,7 +214,7 @@ function getData(sheet) {
 function updateRow(sheet, id, newValues) {
   const data = sheet.getDataRange().getValues();
   for (let i = 1; i < data.length; i++) {
-    if (data[i][0] == id) { // Asumsi kolom ID di index 0
+    if (String(data[i][0]) === String(id)) {
       sheet.getRange(i + 1, 1, 1, newValues.length).setValues([newValues]);
       break;
     }
@@ -212,7 +224,7 @@ function updateRow(sheet, id, newValues) {
 function deleteRow(sheet, id) {
   const data = sheet.getDataRange().getValues();
   for (let i = 1; i < data.length; i++) {
-    if (data[i][0] == id) {
+    if (String(data[i][0]) === String(id)) {
       sheet.deleteRow(i + 1);
       break;
     }

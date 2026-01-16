@@ -32,8 +32,8 @@ const Inventory: React.FC<InventoryProps> = ({ data, refreshData }) => {
   const [isRestockModalOpen, setIsRestockModalOpen] = useState(false);
   const [restockSearchTerm, setRestockSearchTerm] = useState('');
   const [selectedRestockItem, setSelectedRestockItem] = useState<Product | null>(null);
-  const [restockQty, setRestockQty] = useState<number>(0);
-  const [restockBuyPrice, setRestockBuyPrice] = useState<number>(0);
+  const [restockQty, setRestockQty] = useState<number | ''>('');
+  const [restockBuyPrice, setRestockBuyPrice] = useState<number | ''>('');
 
   // Filter Low Stock Items
   const lowStockItems = useMemo(() => {
@@ -119,27 +119,37 @@ const Inventory: React.FC<InventoryProps> = ({ data, refreshData }) => {
 
   const handleRestockSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedRestockItem || restockQty <= 0) return;
+    if (!selectedRestockItem || !restockQty || Number(restockQty) <= 0) {
+      alert("Mohon isi jumlah stok dengan benar.");
+      return;
+    }
 
-    if (!confirm(`Konfirmasi belanja stok:\n${selectedRestockItem.nama}\nJumlah: ${restockQty}\nTotal: Rp ${(restockQty * restockBuyPrice).toLocaleString()}`)) return;
+    const qty = Number(restockQty);
+    const price = Number(restockBuyPrice);
+
+    if (!confirm(`Konfirmasi belanja stok:\n${selectedRestockItem.nama}\nJumlah: ${qty}\nTotal: Rp ${(qty * price).toLocaleString()}`)) return;
 
     setIsSaving(true);
     try {
       await Api.postData('RESTOCK_PRODUCT', {
         id: selectedRestockItem.id,
         nama: selectedRestockItem.nama,
-        qty: restockQty,
-        harga_beli: restockBuyPrice
+        qty: qty,
+        harga_beli: price
       });
-      setIsRestockModalOpen(false);
+      
+      alert("Stok berhasil ditambahkan dan tercatat di Pengeluaran.");
+      
       // Reset form
       setSelectedRestockItem(null);
-      setRestockQty(0);
+      setRestockQty('');
       setRestockSearchTerm('');
+      setIsRestockModalOpen(false);
+      
       refreshData();
-      alert("Stok berhasil ditambahkan dan tercatat di Pengeluaran.");
     } catch (error) {
-      alert("Gagal melakukan restok.");
+      alert("Gagal melakukan restok. Cek koneksi internet atau script backend.");
+      console.error(error);
     } finally {
       setIsSaving(false);
     }
@@ -148,7 +158,7 @@ const Inventory: React.FC<InventoryProps> = ({ data, refreshData }) => {
   const handleSelectRestockItem = (item: Product) => {
     setSelectedRestockItem(item);
     setRestockBuyPrice(item.harga_beli);
-    setRestockQty(0);
+    setRestockQty('');
     setRestockSearchTerm(''); // Clear search to hide list
   };
 
@@ -490,12 +500,12 @@ const Inventory: React.FC<InventoryProps> = ({ data, refreshData }) => {
 
                     <div className="p-3 bg-gray-50 rounded-lg border flex justify-between items-center">
                        <span className="text-sm font-medium text-gray-600">Total Pengeluaran:</span>
-                       <span className="text-lg font-bold text-red-600">Rp {(restockQty * restockBuyPrice).toLocaleString()}</span>
+                       <span className="text-lg font-bold text-red-600">Rp {(Number(restockQty) * Number(restockBuyPrice)).toLocaleString()}</span>
                     </div>
 
                     <button 
                       type="submit" 
-                      disabled={isSaving || restockQty <= 0} 
+                      disabled={isSaving || Number(restockQty) <= 0} 
                       className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 disabled:bg-gray-400 flex justify-center items-center gap-2 shadow-md transition-all active:scale-95"
                     >
                       <Save size={18} /> {isSaving ? 'Menyimpan...' : 'Simpan Stok & Catat Pengeluaran'}
