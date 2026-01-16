@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { User } from '../types';
-import { Lock, User as UserIcon, Store, AlertCircle, RefreshCw } from 'lucide-react';
+import { Lock, User as UserIcon, Store, AlertCircle } from 'lucide-react';
 import { Api } from '../services/api';
 
 interface LoginProps {
@@ -12,7 +12,6 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isResetting, setIsResetting] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,7 +19,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setIsLoading(true);
 
     try {
-      // Mengirim data username & password (plain text) ke backend
+      // Mengirim data username & password ke backend
       // Backend akan mencocokkan dengan data di Sheet 'Users'
       const response = await Api.postData('LOGIN', {
         username: username.trim(),
@@ -38,25 +37,6 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       setError('Gagal menghubungi server. Periksa URL API di Pengaturan.');
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleResetUsers = async () => {
-    if (!confirm("PERHATIAN: Ini akan menghapus sheet 'Users' dan mengisi ulang dengan akun default (admin, kasir, manager) beserta password aslinya. Lanjutkan?")) return;
-    
-    setIsResetting(true);
-    try {
-      const res = await Api.postData('RESET_USERS', {});
-      if (res.status === 'success') {
-        alert("Reset Sukses! Silakan login.");
-        setError('');
-      } else {
-        alert("Gagal reset: " + res.message);
-      }
-    } catch (e) {
-      alert("Gagal menghubungi server.");
-    } finally {
-      setIsResetting(false);
     }
   };
 
@@ -124,17 +104,10 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             </button>
           </form>
 
-          {/* Tombol Reset User */}
           <div className="mt-8 pt-4 border-t border-gray-100 text-center">
-            <p className="text-xs text-gray-400 mb-2">Belum setup data user di Sheet?</p>
-            <button 
-              onClick={handleResetUsers}
-              disabled={isResetting}
-              className="text-xs text-blue-600 font-bold hover:text-blue-800 flex items-center justify-center gap-1 mx-auto"
-            >
-              <RefreshCw size={12} className={isResetting ? "animate-spin" : ""} />
-              {isResetting ? "Sedang Mereset..." : "Reset Data User ke Default"}
-            </button>
+            <p className="text-xs text-gray-400 mb-2">
+              Pastikan sheet <strong>Users</strong> sudah diisi di Google Spreadsheet.
+            </p>
           </div>
           
           <div className="mt-6 text-center text-xs text-gray-400">

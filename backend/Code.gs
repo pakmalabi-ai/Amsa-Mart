@@ -1,12 +1,16 @@
 // KONFIGURASI SCRIPT
 // 1. Buat Google Sheet baru.
 // 2. Buat 4 Tab (Sheet) dengan nama persis: "Barang", "Transaksi", "Kas", "Users".
-// 3. Header Kolom (Baris 1):
+// 3. PENTING: Isi Tab "Users" secara manual dengan format berikut (Mulai baris 1 untuk Header, Baris 2 untuk Data):
+//    - Kolom A (Baris 1): "username"
+//    - Kolom B (Baris 1): "password"
+//    - Kolom C (Baris 1): "role" (isi dengan: admin, kasir, atau manager)
+//    Contoh Baris 2: | admin | rahasia123 | admin |
+// 4. Header Kolom Lainnya:
 //    - Barang: id, kode, nama, harga_beli, harga_jual, stok, kategori, status_pemesanan
 //    - Transaksi: id, tanggal, item_json, total, tipe, metode_pembayaran
 //    - Kas: id, tanggal, deskripsi, debit, kredit, kategori
-//    - Users: username, password, role
-// 4. Deploy sebagai Web App:
+// 5. Deploy sebagai Web App:
 //    - Execute as: Me (saya)
 //    - Who has access: Anyone (Siapa saja)
 
@@ -49,27 +53,26 @@ function doPost(e) {
     const payload = data.payload;
 
     if (action === 'LOGIN') {
-      // --- LOGIKA LOGIN (PLAIN TEXT) ---
+      // --- LOGIKA LOGIN (DATA DARI SHEET) ---
       const uSheet = ss.getSheetByName('Users');
       if (!uSheet) {
-        throw new Error("Sheet 'Users' tidak ditemukan. Gunakan tombol 'Reset Data User' di halaman login.");
+        throw new Error("Sheet 'Users' tidak ditemukan. Harap buat Tab 'Users' di Google Sheet Anda secara manual.");
       }
       
       const usersData = uSheet.getDataRange().getValues();
       let foundUser = null;
       
-      // Normalisasi input (trim spasi)
       const inputUser = String(payload.username).trim();
       const inputPass = String(payload.password).trim(); 
 
       // Loop data sheet (Mulai index 1 karena index 0 adalah Header)
       for (let i = 1; i < usersData.length; i++) {
-        // Kolom 0: Username, Kolom 1: Password (Plain Text), Kolom 2: Role
+        // Kolom 0: Username, Kolom 1: Password, Kolom 2: Role
         const dbUser = String(usersData[i][0]).trim();
         const dbPass = String(usersData[i][1]).trim();
         const dbRole = usersData[i][2];
 
-        // Pencocokan (Case Sensitive untuk password disarankan, tapi disini kita samakan persis stringnya)
+        // Pencocokan
         if (dbUser === inputUser && dbPass === inputPass) {
           foundUser = {
             username: usersData[i][0], 
@@ -84,25 +87,6 @@ function doPost(e) {
       } else {
         result = { status: 'error', message: 'Username atau Password salah!' };
       }
-
-    } else if (action === 'RESET_USERS') {
-      // --- FITUR ISI USER DEFAULT (PLAIN TEXT) ---
-      let uSheet = ss.getSheetByName('Users');
-      if (!uSheet) {
-        uSheet = ss.insertSheet('Users');
-      } else {
-        uSheet.clear(); // Hapus data lama
-      }
-
-      // Buat Header
-      uSheet.appendRow(['username', 'password', 'role']);
-
-      // Tambahkan User Default sesuai permintaan
-      uSheet.appendRow(['admin', 'smaksaka4668@!', 'admin']);
-      uSheet.appendRow(['kasir', 'smaksaka', 'kasir']);
-      uSheet.appendRow(['manager', 'smaksaka21', 'manager']);
-
-      result = { status: 'success', message: 'Data User berhasil di-reset. Password tersimpan di Sheet "Users".' };
 
     } else if (action === 'ADD_PRODUCT') {
       const sheet = ss.getSheetByName('Barang');
