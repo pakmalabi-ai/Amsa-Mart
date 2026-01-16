@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { LedgerEntry } from '../types';
-import { ArrowDownLeft, ArrowUpRight, Download, Filter, PlusCircle, Save, X, MinusCircle, Edit, Trash2, Calendar, AlertTriangle } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Download, Filter, PlusCircle, Save, X, MinusCircle, Edit, Trash2, AlertTriangle } from 'lucide-react';
 import { exportToExcel } from '../utils/excelExport';
 import { Api } from '../services/api';
 
@@ -518,7 +518,7 @@ const Ledger: React.FC<LedgerProps> = ({ data, refreshData }) => {
                     type="number" 
                     min="1"
                     className={`w-full border border-gray-300 rounded-lg p-2 pl-8 font-bold text-lg ${editingEntry.type === 'masuk' ? 'text-green-600' : 'text-red-600'}`}
-                    value={editingEntry.debit} // Kita gunakan field debit sementara utk simpan value inputan
+                    value={editingEntry.debit} 
                     onChange={e => setEditingEntry({...editingEntry, debit: Number(e.target.value)})}
                   />
                 </div>
