@@ -154,7 +154,21 @@ function doPost(e) {
       const kSheet = ss.getSheetByName('Kas');
 
       const tId = Utilities.getUuid();
-      const date = new Date();
+      
+      // LOGIKA TANGGAL: Gunakan customDate jika ada (Backdate), jika tidak pakai Now
+      let date;
+      if (payload.customDate) {
+         // Pastikan format tanggal string diproses dengan benar
+         date = new Date(payload.customDate);
+         // Opsional: set jam ke saat ini agar urutan tidak 00:00 jika diperlukan, 
+         // atau biarkan default agar murni tanggal tersebut.
+         // Disini kita biarkan default new Date(string) atau tambahkan jam sekarang.
+         const now = new Date();
+         date.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
+      } else {
+         date = new Date();
+      }
+
       const paymentType = payload.paymentMethod || 'Tunai';
       
       // 1. Catat Transaksi
@@ -184,6 +198,8 @@ function doPost(e) {
       // 3. Masuk Buku Kas (Pemasukan/Debit)
       const kId = Utilities.getUuid();
       const deskripsi = `Penjualan POS (${paymentType})`;
+      
+      // Pastikan pencatatan Kas juga mengikuti tanggal transaksi
       kSheet.appendRow([kId, date, deskripsi, payload.total, 0, 'Penjualan']);
       
       result = { status: 'success', transactionId: tId };
@@ -193,6 +209,15 @@ function doPost(e) {
       const kId = Utilities.getUuid();
       const date = new Date();
       kSheet.appendRow([kId, date, payload.deskripsi, payload.jumlah, 0, 'Modal']);
+      result = { status: 'success' };
+
+    } else if (action === 'ADD_EXPENSE') {
+      // LOGIKA BARU: Tambah Pengeluaran Operasional
+      const kSheet = ss.getSheetByName('Kas');
+      const kId = Utilities.getUuid();
+      const date = new Date();
+      // id, tanggal, deskripsi, debit (0), kredit (jumlah), kategori
+      kSheet.appendRow([kId, date, payload.deskripsi, 0, payload.jumlah, payload.kategori]);
       result = { status: 'success' };
 
     } else if (action === 'WITHDRAW_PROFIT') {

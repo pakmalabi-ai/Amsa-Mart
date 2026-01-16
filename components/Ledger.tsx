@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { LedgerEntry } from '../types';
-import { ArrowDownLeft, ArrowUpRight, Download, Filter, PlusCircle, Save, X } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Download, Filter, PlusCircle, Save, X, MinusCircle } from 'lucide-react';
 import { exportToExcel } from '../utils/excelExport';
 import { Api } from '../services/api';
 
@@ -9,14 +9,33 @@ interface LedgerProps {
   refreshData: () => void;
 }
 
+// Daftar kategori pengeluaran operasional umum
+const EXPENSE_CATEGORIES = [
+  'Gaji Karyawan',
+  'Listrik & Air',
+  'Sewa Tempat',
+  'Biaya Perawatan/Service',
+  'Perlengkapan Toko',
+  'Transportasi',
+  'Konsumsi',
+  'Lain-lain'
+];
+
 const Ledger: React.FC<LedgerProps> = ({ data, refreshData }) => {
   // State Filter Bulan
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM
   
-  // State Modal Capital
+  // State Modal Capital (Pemasukan Modal)
   const [isCapitalModalOpen, setIsCapitalModalOpen] = useState(false);
   const [capitalAmount, setCapitalAmount] = useState<number | ''>('');
   const [capitalDesc, setCapitalDesc] = useState('Modal Awal Tambahan');
+
+  // State Modal Expense (Pengeluaran Operasional)
+  const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
+  const [expenseAmount, setExpenseAmount] = useState<number | ''>('');
+  const [expenseDesc, setExpenseDesc] = useState('');
+  const [expenseCategory, setExpenseCategory] = useState(EXPENSE_CATEGORIES[0]);
+
   const [isSaving, setIsSaving] = useState(false);
 
   // Filter Data berdasarkan Bulan
@@ -55,9 +74,39 @@ const Ledger: React.FC<LedgerProps> = ({ data, refreshData }) => {
       alert('Modal berhasil ditambahkan!');
       setIsCapitalModalOpen(false);
       setCapitalAmount('');
-      refreshData(); // Refresh data tanpa reload page
+      refreshData();
     } catch (error) {
       alert('Gagal menyimpan modal');
+      console.error(error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveExpense = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!expenseAmount || Number(expenseAmount) <= 0) return;
+    if (!expenseDesc) {
+      alert("Mohon isi deskripsi pengeluaran.");
+      return;
+    }
+
+    if (!confirm(`Catat pengeluaran ${expenseCategory} sebesar Rp ${Number(expenseAmount).toLocaleString()}?`)) return;
+
+    setIsSaving(true);
+    try {
+      await Api.postData('ADD_EXPENSE', {
+        jumlah: Number(expenseAmount),
+        deskripsi: `${expenseCategory}: ${expenseDesc}`,
+        kategori: expenseCategory
+      });
+      alert('Pengeluaran berhasil dicatat!');
+      setIsExpenseModalOpen(false);
+      setExpenseAmount('');
+      setExpenseDesc('');
+      refreshData();
+    } catch (error) {
+      alert('Gagal menyimpan pengeluaran');
       console.error(error);
     } finally {
       setIsSaving(false);
@@ -69,7 +118,13 @@ const Ledger: React.FC<LedgerProps> = ({ data, refreshData }) => {
       case 'Modal': return 'bg-blue-100 text-blue-700 border border-blue-200';
       case 'Penjualan': return 'bg-green-100 text-green-700 border border-green-200';
       case 'Belanja Stok': return 'bg-orange-100 text-orange-700 border border-orange-200';
-      case 'Prive': return 'bg-purple-100 text-purple-700 border border-purple-200'; // Highlight khusus Prive
+      case 'Prive': return 'bg-purple-100 text-purple-700 border border-purple-200'; 
+      // Kategori Pengeluaran Operasional
+      case 'Gaji Karyawan':
+      case 'Listrik & Air':
+      case 'Sewa Tempat':
+      case 'Biaya Perawatan/Service':
+         return 'bg-red-100 text-red-700 border border-red-200';
       default: return 'bg-gray-100 text-gray-600';
     }
   };
@@ -79,21 +134,28 @@ const Ledger: React.FC<LedgerProps> = ({ data, refreshData }) => {
       <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
          <h2 className="text-2xl font-bold text-gray-800">Buku Kas & Operasional</h2>
          
-         <div className="flex items-center gap-2">
+         <div className="flex flex-wrap items-center gap-2 justify-end">
             <button 
               onClick={() => setIsCapitalModalOpen(true)}
               className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 shadow text-sm font-medium"
             >
-              <PlusCircle size={18} /> Input Modal Awal
+              <PlusCircle size={18} /> Input Modal
             </button>
 
-            <div className="flex items-center space-x-2 bg-white p-2 rounded-lg shadow-sm border border-gray-200">
+            <button 
+              onClick={() => setIsExpenseModalOpen(true)}
+              className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 shadow text-sm font-medium"
+            >
+              <MinusCircle size={18} /> Catat Pengeluaran
+            </button>
+
+            <div className="flex items-center space-x-2 bg-white p-2 rounded-lg shadow-sm border border-gray-200 ml-2">
               <Filter size={18} className="text-gray-400" />
               <input 
                 type="month" 
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(e.target.value)}
-                className="border-none outline-none text-sm text-gray-700 font-medium"
+                className="border-none outline-none text-sm text-gray-700 font-medium w-32"
               />
               <div className="h-6 w-px bg-gray-300 mx-2"></div>
               <button 
@@ -156,7 +218,7 @@ const Ledger: React.FC<LedgerProps> = ({ data, refreshData }) => {
                       {new Date(row.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'})}
                     </td>
                     <td className="p-4 text-sm">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getCategoryBadgeClass(row.kategori)}`}>
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${getCategoryBadgeClass(row.kategori)}`}>
                         {row.kategori}
                       </span>
                     </td>
@@ -225,6 +287,71 @@ const Ledger: React.FC<LedgerProps> = ({ data, refreshData }) => {
                 className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 disabled:bg-gray-400 flex justify-center items-center gap-2 shadow-md"
               >
                 <Save size={18} /> {isSaving ? 'Menyimpan...' : 'Simpan Modal'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Input Pengeluaran Operasional */}
+      {isExpenseModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+            <div className="p-4 border-b flex justify-between items-center bg-red-50 rounded-t-xl">
+              <h3 className="text-lg font-bold text-red-800 flex items-center gap-2">
+                <MinusCircle size={20} /> Catat Pengeluaran
+              </h3>
+              <button onClick={() => setIsExpenseModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            
+            <form onSubmit={handleSaveExpense} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Kategori Biaya</label>
+                <select 
+                  className="w-full border border-gray-300 rounded-lg p-2.5 bg-white"
+                  value={expenseCategory}
+                  onChange={(e) => setExpenseCategory(e.target.value)}
+                >
+                  {EXPENSE_CATEGORIES.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                 <label className="block text-sm font-medium text-gray-700 mb-1">Keterangan Detail</label>
+                 <input 
+                   required
+                   type="text"
+                   className="w-full border border-gray-300 rounded-lg p-2"
+                   value={expenseDesc}
+                   onChange={e => setExpenseDesc(e.target.value)}
+                   placeholder="Contoh: Gaji Budi (Januari), Token Listrik, dll"
+                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Jumlah Pengeluaran (Rp)</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2 text-gray-500 text-sm">Rp</span>
+                  <input 
+                    required 
+                    type="number" 
+                    min="1"
+                    className="w-full border border-gray-300 rounded-lg p-2 pl-8 font-bold text-lg text-red-600" 
+                    value={expenseAmount} 
+                    onChange={e => setExpenseAmount(Number(e.target.value))} 
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+
+              <button 
+                type="submit" 
+                disabled={isSaving} 
+                className="w-full bg-red-600 text-white py-3 rounded-lg font-bold hover:bg-red-700 disabled:bg-gray-400 flex justify-center items-center gap-2 shadow-md"
+              >
+                <Save size={18} /> {isSaving ? 'Menyimpan...' : 'Simpan Pengeluaran'}
               </button>
             </form>
           </div>

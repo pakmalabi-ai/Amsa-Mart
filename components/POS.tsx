@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Product, CartItem, Transaction } from '../types';
-import { Search, Plus, Minus, Trash2, ShoppingBag, FileText, Download, X, Banknote, CreditCard, Printer, RotateCcw, FileDown, AlertCircle, QrCode, Check } from 'lucide-react';
+import { Search, Plus, Minus, Trash2, ShoppingBag, FileText, Download, X, Banknote, CreditCard, Printer, RotateCcw, FileDown, AlertCircle, QrCode, Check, Calendar } from 'lucide-react';
 import { Api } from '../services/api';
 import { exportToExcel } from '../utils/excelExport';
 
@@ -22,6 +22,10 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
   const [paymentMethod, setPaymentMethod] = useState<'Tunai' | 'QRIS'>('Tunai');
   const [cashReceived, setCashReceived] = useState<number | ''>('');
   const [isQrisModalOpen, setIsQrisModalOpen] = useState(false);
+
+  // State Tanggal Transaksi (Backdate)
+  // Default: Hari ini (YYYY-MM-DD)
+  const [transactionDate, setTransactionDate] = useState<string>(new Date().toISOString().split('T')[0]);
   
   // State Transaksi Terakhir (untuk Struk)
   const [lastTransaction, setLastTransaction] = useState<{
@@ -104,8 +108,13 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
   const handleCheckout = async (skipConfirmation = false) => {
     if (isCheckoutDisabled) return;
 
+    // Pesan konfirmasi jika tanggal bukan hari ini
+    const today = new Date().toISOString().split('T')[0];
+    const isBackdate = transactionDate !== today;
+    const backdateMsg = isBackdate ? `\n(Tgl Transaksi: ${transactionDate})` : '';
+
     if (!skipConfirmation) {
-      if (!confirm(`Proses transaksi senilai Rp ${totalAmount.toLocaleString()}?`)) return;
+      if (!confirm(`Proses transaksi senilai Rp ${totalAmount.toLocaleString()}?${backdateMsg}`)) return;
     }
 
     setIsCheckingOut(true);
@@ -113,10 +122,16 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
       const result = await Api.postData('CHECKOUT', {
         items: cart.map(i => ({ id: i.id, qty: i.qty, nama: i.nama, harga: i.harga_jual })),
         total: totalAmount,
-        paymentMethod: paymentMethod
+        paymentMethod: paymentMethod,
+        customDate: transactionDate // Kirim tanggal custom ke backend
       });
 
       // Siapkan Data Struk
+      // Gunakan transactionDate untuk tampilan di struk jika backdate
+      const displayDate = isBackdate 
+         ? new Date(transactionDate).toLocaleDateString('id-ID') + ' (Backdate)'
+         : new Date().toLocaleString('id-ID');
+
       const transactionData = {
         id: result.transactionId || 'OFFLINE-' + Date.now(),
         items: [...cart],
@@ -124,15 +139,16 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
         paymentMethod,
         cash: paymentMethod === 'Tunai' ? Number(cashReceived) : totalAmount,
         change: paymentMethod === 'Tunai' ? changeAmount : 0,
-        date: new Date().toLocaleString('id-ID')
+        date: displayDate
       };
       
       setLastTransaction(transactionData);
       
-      // Reset POS
+      // Reset POS (Biarkan tanggal tetap sesuai pilihan terakhir atau reset ke hari ini? Biasanya reset ke hari ini lebih aman)
       setCart([]);
       setCashReceived('');
       setPaymentMethod('Tunai');
+      // setTransactionDate(today); // Uncomment jika ingin auto-reset tanggal ke hari ini
       refreshData();
       
       // Auto Print (Delay sedikit agar DOM render)
@@ -305,8 +321,8 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
             
             {/* Meta Transaksi */}
             <div className="flex justify-between text-[10px]">
-              <span>{lastTransaction.date.split(' ')[0]}</span>
-              <span>{lastTransaction.date.split(' ')[1]}</span>
+              {/* Jika tanggal ada kata Backdate, parsing manual, jika tidak split string biasa */}
+              <span>{lastTransaction.date}</span>
             </div>
             <div className="text-[10px]">No: {lastTransaction.id.substring(0, 8)}...</div>
             
@@ -412,6 +428,19 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
           </h2>
           <span className="bg-blue-200 text-blue-800 text-xs px-2 py-1 rounded-full">{cart.length} Item</span>
         </div>
+        
+        {/* INPUT TANGGAL TRANSAKSI (Backdate) */}
+        <div className="px-4 py-3 bg-white border-b border-gray-100">
+           <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-1">
+             <Calendar size={10} /> Tanggal Transaksi
+           </label>
+           <input 
+             type="date"
+             className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm font-medium text-gray-700 focus:ring-1 focus:ring-blue-500 outline-none"
+             value={transactionDate}
+             onChange={(e) => setTransactionDate(e.target.value)}
+           />
+        </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {cart.length === 0 ? (
@@ -454,19 +483,19 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
 
           {/* Tombol Aksi Struk (Cetak Ulang & PDF) */}
           {lastTransaction && cart.length === 0 && (
-             <div className="grid grid-cols-2 gap-2">
+             <div className="flex flex-col gap-2">
                <button 
                  onClick={handleReprint}
-                 className="py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded border border-gray-300 flex items-center justify-center gap-2 text-xs font-semibold"
+                 className="w-full py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded border border-gray-300 flex items-center justify-center gap-2 text-xs font-semibold"
                >
                  <RotateCcw size={14} /> Cetak Ulang
                </button>
                <button 
                  onClick={handleDownloadPdf}
                  disabled={isGeneratingPdf}
-                 className="py-2 bg-red-50 text-red-700 hover:bg-red-100 rounded border border-red-200 flex items-center justify-center gap-2 text-xs font-semibold disabled:opacity-50"
+                 className="w-full py-2 bg-red-50 text-red-700 hover:bg-red-100 rounded border border-red-200 flex items-center justify-center gap-2 text-xs font-semibold disabled:opacity-50"
                >
-                 <FileDown size={14} /> {isGeneratingPdf ? 'Memproses...' : 'Simpan PDF'}
+                 <FileDown size={14} /> {isGeneratingPdf ? 'Memproses PDF...' : 'Simpan sebagai PDF'}
                </button>
              </div>
           )}
