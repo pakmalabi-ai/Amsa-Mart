@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { LedgerEntry } from '../types';
-import { ArrowDownLeft, ArrowUpRight, Download, Filter, PlusCircle, Save, X, MinusCircle } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Download, Filter, PlusCircle, Save, X, MinusCircle, Edit, Trash2, Calendar, AlertTriangle } from 'lucide-react';
 import { exportToExcel } from '../utils/excelExport';
 import { Api } from '../services/api';
 
@@ -18,7 +18,11 @@ const EXPENSE_CATEGORIES = [
   'Perlengkapan Toko',
   'Transportasi',
   'Konsumsi',
-  'Lain-lain'
+  'Lain-lain',
+  'Modal', // Added specifically for editing flexibility
+  'Prive', // Added specifically for editing flexibility
+  'Belanja Stok', // Added for editing
+  'Penjualan' // Added for editing
 ];
 
 const Ledger: React.FC<LedgerProps> = ({ data, refreshData }) => {
@@ -35,6 +39,10 @@ const Ledger: React.FC<LedgerProps> = ({ data, refreshData }) => {
   const [expenseAmount, setExpenseAmount] = useState<number | ''>('');
   const [expenseDesc, setExpenseDesc] = useState('');
   const [expenseCategory, setExpenseCategory] = useState(EXPENSE_CATEGORIES[0]);
+
+  // State Modal Edit
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<Partial<LedgerEntry> & { type: 'masuk' | 'keluar' } | null>(null);
 
   const [isSaving, setIsSaving] = useState(false);
 
@@ -108,6 +116,69 @@ const Ledger: React.FC<LedgerProps> = ({ data, refreshData }) => {
     } catch (error) {
       alert('Gagal menyimpan pengeluaran');
       console.error(error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleEditClick = (item: LedgerEntry) => {
+    const isDebit = item.debit > 0;
+    setEditingEntry({
+      ...item,
+      // Format tanggal untuk input type="datetime-local" (YYYY-MM-DDTHH:mm)
+      tanggal: new Date(item.tanggal).toISOString().slice(0, 16),
+      type: isDebit ? 'masuk' : 'keluar',
+      // Jika debit ada isinya gunakan debit, jika tidak gunakan kredit
+      debit: isDebit ? item.debit : item.kredit 
+    });
+    setIsEditModalOpen(true);
+  };
+
+  const handleDeleteClick = async (id: string) => {
+    if (!confirm("PERINGATAN: Menghapus data kas dapat mempengaruhi perhitungan Laba Rugi.\n\nYakin ingin menghapus transaksi ini?")) return;
+
+    setIsSaving(true);
+    try {
+       await Api.postData('DELETE_LEDGER', { id });
+       refreshData();
+    } catch (error) {
+       console.error(error);
+       alert("Gagal menghapus data.");
+    } finally {
+       setIsSaving(false);
+    }
+  };
+
+  const handleUpdateLedger = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingEntry || !editingEntry.id) return;
+    
+    // Gunakan nilai dari field debit sementara sebagai 'nominal'
+    const nominal = Number(editingEntry.debit); 
+    if (nominal <= 0) {
+      alert("Nominal harus lebih dari 0");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const payload = {
+        id: editingEntry.id,
+        tanggal: editingEntry.tanggal, // Kirim string ISO/Time local
+        deskripsi: editingEntry.deskripsi,
+        kategori: editingEntry.kategori,
+        debit: editingEntry.type === 'masuk' ? nominal : 0,
+        kredit: editingEntry.type === 'keluar' ? nominal : 0
+      };
+
+      await Api.postData('UPDATE_LEDGER', payload);
+      alert("Data kas berhasil diperbarui.");
+      setIsEditModalOpen(false);
+      setEditingEntry(null);
+      refreshData();
+    } catch (error) {
+      console.error(error);
+      alert("Gagal memperbarui data kas.");
     } finally {
       setIsSaving(false);
     }
@@ -204,16 +275,17 @@ const Ledger: React.FC<LedgerProps> = ({ data, refreshData }) => {
                 <th className="p-4">Deskripsi</th>
                 <th className="p-4 text-right text-green-600">Debit (Masuk)</th>
                 <th className="p-4 text-right text-red-600">Kredit (Keluar)</th>
+                <th className="p-4 text-center">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {sortedData.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-8 text-center text-gray-400">Belum ada data transaksi di bulan ini</td>
+                  <td colSpan={6} className="p-8 text-center text-gray-400">Belum ada data transaksi di bulan ini</td>
                 </tr>
               ) : (
                 sortedData.map((row) => (
-                  <tr key={row.id} className="hover:bg-gray-50">
+                  <tr key={row.id} className="hover:bg-gray-50 group">
                     <td className="p-4 text-sm text-gray-600 whitespace-nowrap">
                       {new Date(row.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'})}
                     </td>
@@ -228,6 +300,16 @@ const Ledger: React.FC<LedgerProps> = ({ data, refreshData }) => {
                     </td>
                     <td className="p-4 text-right font-mono text-sm text-red-600">
                       {row.kredit > 0 ? `- Rp ${row.kredit.toLocaleString()}` : '-'}
+                    </td>
+                    <td className="p-4 text-center">
+                       <div className="flex justify-center gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
+                         <button onClick={() => handleEditClick(row)} className="text-blue-500 hover:bg-blue-50 p-1.5 rounded" title="Edit Transaksi">
+                           <Edit size={16}/>
+                         </button>
+                         <button onClick={() => handleDeleteClick(row.id)} className="text-red-500 hover:bg-red-50 p-1.5 rounded" title="Hapus Transaksi">
+                           <Trash2 size={16}/>
+                         </button>
+                       </div>
                     </td>
                   </tr>
                 ))
@@ -352,6 +434,107 @@ const Ledger: React.FC<LedgerProps> = ({ data, refreshData }) => {
                 className="w-full bg-red-600 text-white py-3 rounded-lg font-bold hover:bg-red-700 disabled:bg-gray-400 flex justify-center items-center gap-2 shadow-md"
               >
                 <Save size={18} /> {isSaving ? 'Menyimpan...' : 'Simpan Pengeluaran'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL EDIT TRANSAKSI (General) */}
+      {isEditModalOpen && editingEntry && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+            <div className="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-xl">
+              <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                <Edit size={20} /> Edit Transaksi
+              </h3>
+              <button onClick={() => setIsEditModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            
+            <form onSubmit={handleUpdateLedger} className="p-6 space-y-4">
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Tanggal & Waktu</label>
+                <input 
+                  type="datetime-local"
+                  required
+                  className="w-full border border-gray-300 rounded-lg p-2"
+                  value={editingEntry.tanggal}
+                  onChange={e => setEditingEntry({...editingEntry, tanggal: e.target.value})}
+                />
+              </div>
+
+              <div className="flex gap-4 p-2 bg-gray-50 rounded border border-gray-100">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input 
+                    type="radio" 
+                    name="type" 
+                    checked={editingEntry.type === 'masuk'} 
+                    onChange={() => setEditingEntry({...editingEntry, type: 'masuk'})}
+                  />
+                  <span className="text-sm font-bold text-green-700">Pemasukan (Debit)</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input 
+                    type="radio" 
+                    name="type" 
+                    checked={editingEntry.type === 'keluar'}
+                    onChange={() => setEditingEntry({...editingEntry, type: 'keluar'})}
+                  />
+                  <span className="text-sm font-bold text-red-700">Pengeluaran (Kredit)</span>
+                </label>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Kategori</label>
+                <select 
+                  className="w-full border border-gray-300 rounded-lg p-2 bg-white"
+                  value={editingEntry.kategori}
+                  onChange={e => setEditingEntry({...editingEntry, kategori: e.target.value})}
+                >
+                  {EXPENSE_CATEGORIES.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                 <label className="block text-sm font-medium text-gray-700 mb-1">Deskripsi</label>
+                 <input 
+                   required
+                   type="text"
+                   className="w-full border border-gray-300 rounded-lg p-2"
+                   value={editingEntry.deskripsi}
+                   onChange={e => setEditingEntry({...editingEntry, deskripsi: e.target.value})}
+                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nominal (Rp)</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2 text-gray-500 text-sm">Rp</span>
+                  <input 
+                    required 
+                    type="number" 
+                    min="1"
+                    className={`w-full border border-gray-300 rounded-lg p-2 pl-8 font-bold text-lg ${editingEntry.type === 'masuk' ? 'text-green-600' : 'text-red-600'}`}
+                    value={editingEntry.debit} // Kita gunakan field debit sementara utk simpan value inputan
+                    onChange={e => setEditingEntry({...editingEntry, debit: Number(e.target.value)})}
+                  />
+                </div>
+              </div>
+
+              <div className="bg-yellow-50 p-2 rounded text-[10px] text-yellow-800 flex gap-1 border border-yellow-100">
+                <AlertTriangle size={12} className="shrink-0 mt-0.5"/>
+                Perhatian: Mengubah data transaksi 'Penjualan' atau 'Belanja Stok' di sini tidak akan otomatis mengubah stok barang atau data struk. Lakukan dengan hati-hati.
+              </div>
+
+              <button 
+                type="submit" 
+                disabled={isSaving} 
+                className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 disabled:bg-gray-400 flex justify-center items-center gap-2 shadow-md"
+              >
+                <Save size={18} /> {isSaving ? 'Menyimpan Perubahan...' : 'Update Transaksi'}
               </button>
             </form>
           </div>

@@ -247,6 +247,25 @@ function doPost(e) {
       const date = new Date();
       kSheet.appendRow([kId, date, payload.deskripsi, 0, payload.jumlah, 'Prive']);
       result = { status: 'success' };
+      
+    } else if (action === 'UPDATE_LEDGER') {
+      const kSheet = ss.getSheetByName('Kas');
+      // Format Row: id, tanggal, deskripsi, debit, kredit, kategori
+      const date = new Date(payload.tanggal);
+      updateRow(kSheet, payload.id, [
+        payload.id, 
+        date, 
+        payload.deskripsi, 
+        payload.debit, 
+        payload.kredit, 
+        payload.kategori
+      ]);
+      result = { status: 'success' };
+      
+    } else if (action === 'DELETE_LEDGER') {
+      const kSheet = ss.getSheetByName('Kas');
+      deleteRow(kSheet, payload.id);
+      result = { status: 'success' };
     }
 
   } catch (err) {
