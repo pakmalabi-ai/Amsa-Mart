@@ -518,7 +518,7 @@ const Ledger: React.FC<LedgerProps> = ({ data, refreshData }) => {
                     type="number" 
                     min="1"
                     className={`w-full border border-gray-300 rounded-lg p-2 pl-8 font-bold text-lg ${editingEntry.type === 'masuk' ? 'text-green-600' : 'text-red-600'}`}
-                    value={editingEntry.debit} 
+                    value={editingEntry.debit} // Kita gunakan field debit sementara utk simpan value inputan
                     onChange={e => setEditingEntry({...editingEntry, debit: Number(e.target.value)})}
                   />
                 </div>

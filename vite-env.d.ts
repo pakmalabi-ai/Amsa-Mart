@@ -1,2 +1,4 @@
-// The following line is commented out to resolve "Cannot find type definition file for 'vite/client'" error.
-// /// <reference types="vite/client" />
+// Fix: Remove reference to vite/client type definition which is missing
+interface Window {
+  html2pdf: any;
+}

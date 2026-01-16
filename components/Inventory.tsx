@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Product } from '../types';
 import { Api } from '../services/api';
-import { Edit, Trash2, Plus, Save, X, Download, RefreshCw, AlertTriangle, CheckCircle, Truck, AlertCircle, ShoppingCart, Search } from 'lucide-react';
+import { Edit, Trash2, Plus, Save, X, Download, RefreshCw, AlertTriangle, CheckCircle, Truck, ShoppingCart, Search } from 'lucide-react';
 import { exportToExcel } from '../utils/excelExport';
 
 interface InventoryProps {
@@ -35,9 +35,9 @@ const Inventory: React.FC<InventoryProps> = ({ data, refreshData }) => {
   const [restockQty, setRestockQty] = useState<number | ''>('');
   const [restockBuyPrice, setRestockBuyPrice] = useState<number | ''>('');
 
-  // Filter Low Stock Items
+  // Filter Low Stock Items (Fix: Ensure numeric comparison)
   const lowStockItems = useMemo(() => {
-    return data.filter(item => item.stok <= reorderThreshold);
+    return data.filter(item => Number(item.stok) <= reorderThreshold);
   }, [data, reorderThreshold]);
 
   // Filter Restock Search
@@ -280,7 +280,7 @@ const Inventory: React.FC<InventoryProps> = ({ data, refreshData }) => {
                   <td className="p-4 text-sm text-right">Rp {item.harga_beli.toLocaleString()}</td>
                   <td className="p-4 text-sm text-right font-semibold text-green-600">Rp {item.harga_jual.toLocaleString()}</td>
                   <td className="p-4 text-center">
-                    <span className={`px-2 py-1 rounded text-xs font-bold ${item.stok <= reorderThreshold ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
+                    <span className={`px-2 py-1 rounded text-xs font-bold ${Number(item.stok) <= reorderThreshold ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
                       {item.stok}
                     </span>
                   </td>
@@ -309,7 +309,7 @@ const Inventory: React.FC<InventoryProps> = ({ data, refreshData }) => {
             <div className="p-4 border-b bg-orange-50 rounded-t-xl flex justify-between items-center">
               <div>
                 <h3 className="text-lg font-bold text-orange-800 flex items-center gap-2">
-                  <AlertCircle className="text-orange-600"/>
+                  <AlertTriangle className="text-orange-600"/>
                   Pesan Ulang Otomatis (Reorder)
                 </h3>
                 <p className="text-xs text-orange-600">Daftar barang dengan stok di bawah batas aman.</p>

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Product, CartItem, Transaction } from '../types';
 import { Search, Plus, Minus, Trash2, ShoppingBag, FileText, Download, X, Banknote, CreditCard, Printer, RotateCcw, FileDown, AlertCircle, QrCode, Check, Calendar } from 'lucide-react';
 import { Api } from '../services/api';
@@ -34,10 +34,24 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
     date: string;
   } | null>(null);
 
+  // Trigger Print State
+  const [printTrigger, setPrintTrigger] = useState(0);
+
   // State untuk Laporan Harian
   const [isReportOpen, setIsReportOpen] = useState(false);
   const [dailyTransactions, setDailyTransactions] = useState<Transaction[]>([]);
   const [loadingReport, setLoadingReport] = useState(false);
+
+  // Effect untuk menangani auto-print setelah transaksi sukses
+  useEffect(() => {
+    if (printTrigger > 0) {
+      // Delay sedikit untuk memastikan DOM rendering selesai
+      const timer = setTimeout(() => {
+        window.print();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [printTrigger]);
 
   const filteredItems = useMemo(() => {
     return inventory.filter(item => 
@@ -109,6 +123,7 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
 
     setIsCheckingOut(true);
     try {
+      // 1. Kirim Data ke Database (Backend)
       const result = await Api.postData('CHECKOUT', {
         items: cart.map(i => ({ id: i.id, qty: i.qty, nama: i.nama, harga: i.harga_jual })),
         total: totalAmount,
@@ -116,6 +131,7 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
         customDate: transactionDate
       });
 
+      // 2. Siapkan Data Lokal untuk Struk (Frontend)
       const displayDate = isBackdate 
          ? new Date(transactionDate).toLocaleDateString('id-ID') + ' (Backdate)'
          : new Date().toLocaleString('id-ID');
@@ -130,19 +146,22 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
         date: displayDate
       };
       
+      // 3. Update State Struk
       setLastTransaction(transactionData);
+      
+      // 4. Reset Cart
       setCart([]);
       setCashReceived('');
       setPaymentMethod('Tunai');
+      
+      // 5. Sync Data Stok Terbaru dari Backend
       refreshData();
       
-      // Auto Print
-      setTimeout(() => {
-        window.print();
-      }, 500);
+      // 6. Trigger Print Otomatis
+      setPrintTrigger(prev => prev + 1);
 
     } catch (err) {
-      alert('Gagal memproses transaksi.');
+      alert('Gagal memproses transaksi. Periksa koneksi internet.');
       console.error(err);
     } finally {
       setIsCheckingOut(false);
@@ -168,7 +187,6 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
     if (!lastTransaction) return;
     
     // Menggunakan window.html2pdf dari CDN
-    // @ts-ignore
     const html2pdf = window.html2pdf;
 
     if (!html2pdf) {
@@ -177,21 +195,19 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
     }
 
     setIsGeneratingPdf(true);
-    const element = document.getElementById('printable-receipt');
+    
+    // Kita gunakan elemen khusus untuk PDF yang tidak disembunyikan dengan display:none
+    // tetapi ditaruh di luar layar (off-screen) agar html2canvas bisa merendernya.
+    const element = document.getElementById('pdf-receipt-content');
     
     if (element) {
       try {
-        // Tampilkan elemen sementara untuk dicapture oleh html2pdf
-        element.classList.remove('hidden');
-        element.style.display = 'block';
-        element.style.width = '80mm'; // Lebar standar struk thermal
-        
         const opt = {
           margin: 0,
           filename: `Struk_${lastTransaction.id}.pdf`,
           image: { type: 'jpeg', quality: 0.98 },
-          html2canvas: { scale: 2, useCORS: true, scrollY: 0 },
-          // Atur format kertas custom agar panjang menyesuaikan atau setidaknya cukup panjang
+          html2canvas: { scale: 2, useCORS: true, logging: false },
+          // Format kertas struk thermal 80mm
           jsPDF: { unit: 'mm', format: [80, 200], orientation: 'portrait' } 
         };
 
@@ -200,12 +216,11 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
         console.error("Gagal generate PDF", error);
         alert("Gagal mengunduh PDF");
       } finally {
-        // Sembunyikan kembali
-        element.style.display = ''; 
-        element.style.width = '';
-        element.classList.add('hidden');
         setIsGeneratingPdf(false);
       }
+    } else {
+      setIsGeneratingPdf(false);
+      alert("Terjadi kesalahan sistem: Elemen struk tidak ditemukan.");
     }
   };
 
@@ -243,70 +258,79 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
   return (
     <div className="flex flex-col md:flex-row h-[calc(100vh-4rem)] bg-gray-50 overflow-hidden relative">
       
-      {/* CSS KHUSUS PRINTER THERMAL */}
+      {/* 
+         CSS KHUSUS PRINTER THERMAL
+         Optimasi: Margin 0, Hide header/footer browser, Set width
+      */}
       <style>{`
         @media print {
           @page {
             margin: 0;
-            size: auto;
+            size: auto; 
           }
-          body {
+          body * {
+            visibility: hidden;
+            height: 0; 
+            overflow: hidden;
+          }
+          /* Hanya tampilkan struk */
+          #printable-receipt, #printable-receipt * {
+            visibility: visible;
+            height: auto;
+            overflow: visible;
+          }
+          #printable-receipt {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%; /* Printer driver biasanya handle width kertas, tapi kita set max-width di element */
             margin: 0;
             padding: 0;
             background-color: white;
             color: black;
-          }
-          #root > *:not(#printable-receipt), 
-          .print\\:hidden {
-            display: none !important;
-          }
-          #printable-receipt {
-            display: block !important;
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
-            margin: 0;
-            padding: 5px;
-            font-family: 'Courier New', Courier, monospace;
-            font-size: 12px;
-            line-height: 1.2;
-            color: black;
-          }
-          header, footer {
-            display: none;
-          }
-          * {
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-            color: black !important;
+            z-index: 9999;
           }
         }
       `}</style>
 
-      {/* Komponen Struk (Hidden secara default, visible saat Print/PDF) */}
-      <div id="printable-receipt" className="hidden print:block bg-white p-2 font-mono text-xs text-black leading-tight max-w-[80mm] mx-auto">
+      {/* 
+        CONTAINER STRUK PDF (Hidden/Offscreen)
+        Format lebih lebar sedikit dari thermal untuk keterbacaan PDF
+      */}
+      <div 
+        id="pdf-receipt-content" 
+        style={{
+          position: 'fixed',
+          left: '-9999px',
+          top: 0,
+          width: '80mm',
+          backgroundColor: '#fff',
+          padding: '10px',
+          fontFamily: 'Courier New, monospace',
+          color: '#000',
+          fontSize: '11px',
+          lineHeight: '1.4'
+        }}
+      >
         {lastTransaction && (
-          <div className="w-full">
-            <div className="text-center mb-2">
-              <div className="text-sm font-bold uppercase tracking-widest">AMSA MART</div>
+           <div className="w-full">
+            <div className="text-center mb-4">
+              <div className="text-lg font-bold uppercase tracking-widest">AMSA MART</div>
               <div className="text-[10px]">Jl. Merdeka No. 45, Jakarta</div>
               <div className="text-[10px]">Telp: 021-555-0123</div>
             </div>
             
-            <div className="border-t border-dashed border-black my-1"></div>
-            
-            <div className="flex justify-between text-[10px]">
+            <div className="border-t border-dashed border-black my-2"></div>
+            <div className="flex justify-between">
               <span>{lastTransaction.date}</span>
             </div>
-            <div className="text-[10px]">No: {lastTransaction.id.substring(0, 8)}...</div>
+            <div className="mb-2">ID: {lastTransaction.id.substring(0, 10)}</div>
+            <div className="border-t border-dashed border-black my-2"></div>
             
-            <div className="border-t border-dashed border-black my-1"></div>
-            
-            <div className="space-y-1 my-2">
+            <div className="space-y-2 my-3">
               {lastTransaction.items.map((item, idx) => (
                 <div key={idx} className="flex flex-col">
-                  <div className="truncate font-medium">{item.nama}</div>
+                  <div className="font-bold">{item.nama}</div>
                   <div className="flex justify-between pl-2">
                     <span>{item.qty} x {item.harga_jual.toLocaleString()}</span>
                     <span>{(item.harga_jual * item.qty).toLocaleString()}</span>
@@ -315,36 +339,93 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
               ))}
             </div>
 
-            <div className="border-t border-dashed border-black my-1"></div>
-
+            <div className="border-t border-dashed border-black my-2"></div>
             <div className="flex justify-between font-bold text-sm my-1">
               <span>TOTAL</span>
               <span>Rp {lastTransaction.total.toLocaleString()}</span>
             </div>
-            
-            <div className="border-t border-dashed border-black my-1"></div>
-
-            <div className="flex justify-between text-[11px]">
+            <div className="border-t border-dashed border-black my-2"></div>
+            <div className="flex justify-between">
               <span>Bayar ({lastTransaction.paymentMethod})</span>
               <span>Rp {lastTransaction.cash.toLocaleString()}</span>
             </div>
             {lastTransaction.paymentMethod === 'Tunai' && (
-              <div className="flex justify-between text-[11px]">
+              <div className="flex justify-between">
                 <span>Kembali</span>
                 <span>Rp {lastTransaction.change.toLocaleString()}</span>
               </div>
             )}
-
-            <div className="border-t border-dashed border-black my-2"></div>
-            
-            <div className="text-center mt-2 text-[10px]">
+            <div className="border-t border-dashed border-black my-4"></div>
+            <div className="text-center mt-4">
               <p>Terima Kasih</p>
-              <p>Barang yg dibeli tdk dpt ditukar</p>
-              <p className="mt-1">*** LUNAS ***</p>
             </div>
-            <div className="h-4"></div>
           </div>
         )}
+      </div>
+
+      {/* 
+        KOMPONEN STRUK THERMAL (Native Browser Print)
+        Layout dioptimalkan untuk lebar 58mm - 80mm
+      */}
+      <div id="printable-receipt" className="hidden print:block bg-white font-mono text-black leading-tight">
+        <div style={{ width: '72mm', margin: '0 auto', padding: '5px 0' }}> {/* Lebar aman thermal 80mm */}
+          {lastTransaction && (
+            <div className="w-full">
+              {/* Header */}
+              <div className="text-center mb-3">
+                <div className="text-base font-bold uppercase">AMSA MART</div>
+                <div className="text-[10px]">Jl. Merdeka No. 45, Jakarta</div>
+              </div>
+              
+              <div className="text-[10px] mb-2 border-b border-black pb-1 border-dashed">
+                <div className="flex justify-between">
+                   <span>Tgl: {lastTransaction.date.split(',')[0]}</span>
+                   <span>Jam: {new Date().toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'})}</span>
+                </div>
+                <div>No: {lastTransaction.id.slice(-8).toUpperCase()}</div>
+              </div>
+              
+              {/* Items: Gunakan layout 2 baris agar nama panjang tidak rusak */}
+              <div className="space-y-2 mb-2 border-b border-black pb-2 border-dashed">
+                {lastTransaction.items.map((item, idx) => (
+                  <div key={idx} className="flex flex-col text-[11px]">
+                    <div className="font-bold truncate">{item.nama}</div>
+                    <div className="flex justify-between pl-2">
+                      <span>{item.qty} x {item.harga_jual.toLocaleString()}</span>
+                      <span className="font-semibold">{ (item.harga_jual * item.qty).toLocaleString() }</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Totals */}
+              <div className="flex justify-between font-bold text-sm mb-1">
+                <span>TOTAL</span>
+                <span>Rp {lastTransaction.total.toLocaleString()}</span>
+              </div>
+              
+              <div className="text-[11px] border-t border-black border-dashed pt-1 mb-2">
+                <div className="flex justify-between">
+                  <span>Bayar ({lastTransaction.paymentMethod})</span>
+                  <span>Rp {lastTransaction.cash.toLocaleString()}</span>
+                </div>
+                {lastTransaction.paymentMethod === 'Tunai' && (
+                  <div className="flex justify-between">
+                    <span>Kembali</span>
+                    <span>Rp {lastTransaction.change.toLocaleString()}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="text-center mt-4 text-[10px]">
+                <p className="uppercase font-bold">Terima Kasih</p>
+                <p className="mt-1">Barang yg sudah dibeli<br/>tidak dapat ditukar/dikembalikan</p>
+                <p className="mt-2">-- LUNAS --</p>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Product Grid */}
@@ -375,12 +456,12 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
               key={item.id} 
               onClick={() => addToCart(item)}
               className={`bg-white p-4 rounded-lg shadow-sm cursor-pointer hover:shadow-md transition-all border
-                ${item.stok <= 0 ? 'opacity-50 grayscale cursor-not-allowed' : 'border-gray-100 hover:border-blue-300'}
+                ${Number(item.stok) <= 0 ? 'opacity-50 grayscale cursor-not-allowed' : 'border-gray-100 hover:border-blue-300'}
               `}
             >
               <div className="flex justify-between items-start mb-2">
                 <span className="text-xs font-semibold bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{item.kode}</span>
-                <span className={`text-xs font-bold ${item.stok < 5 ? 'text-red-500' : 'text-green-500'}`}>
+                <span className={`text-xs font-bold ${Number(item.stok) < 5 ? 'text-red-500' : 'text-green-500'}`}>
                   Stok: {item.stok}
                 </span>
               </div>
@@ -465,7 +546,7 @@ const POS: React.FC<POSProps> = ({ inventory, refreshData }) => {
                  disabled={isGeneratingPdf}
                  className="w-full py-2 bg-red-50 text-red-700 hover:bg-red-100 rounded border border-red-200 flex items-center justify-center gap-2 text-xs font-semibold disabled:opacity-50"
                >
-                 <FileDown size={14} /> {isGeneratingPdf ? 'Memproses PDF...' : 'Simpan sebagai PDF'}
+                 <FileDown size={14} /> {isGeneratingPdf ? 'Memproses PDF...' : 'Unduh Struk PDF'}
                </button>
              </div>
           )}
