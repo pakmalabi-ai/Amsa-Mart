@@ -44,6 +44,18 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  // LOCK SERVICE: Mencegah tabrakan data saat banyak user mengakses bersamaan
+  const lock = LockService.getScriptLock();
+  // Tunggu maksimal 10 detik untuk mendapatkan giliran edit
+  const successLock = lock.tryLock(10000); 
+
+  if (!successLock) {
+    return ContentService.createTextOutput(JSON.stringify({ 
+      status: 'error', 
+      message: 'Server sibuk. Mohon coba lagi dalam beberapa detik.' 
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+
   const ss = getSpreadsheet();
   let result = {};
   
@@ -119,13 +131,14 @@ function doPost(e) {
       
     } else if (action === 'UPDATE_PRODUCT') {
       const sheet = ss.getSheetByName('Barang');
+      // Pastikan urutan array sesuai dengan kolom di Sheet Barang
       updateRow(sheet, payload.id, [
         payload.id, 
         payload.kode, 
         payload.nama, 
-        payload.harga_beli, 
-        payload.harga_jual, 
-        payload.stok, 
+        Number(payload.harga_beli), 
+        Number(payload.harga_jual), 
+        Number(payload.stok), 
         payload.kategori,
         payload.status_pemesanan || ''
       ]);
@@ -141,6 +154,7 @@ function doPost(e) {
       let rowIndex = -1;
       const targetId = String(payload.id).trim();
 
+      // Cari baris barang berdasarkan ID
       for (let i = 1; i < dataBarang.length; i++) {
         if (String(dataBarang[i][0]).trim() === targetId) {
           rowIndex = i;
@@ -149,21 +163,25 @@ function doPost(e) {
       }
 
       if (rowIndex !== -1) {
-        const sheetRow = rowIndex + 1;
-        const currentStock = Number(dataBarang[rowIndex][5]); 
+        const sheetRow = rowIndex + 1; // Konversi ke 1-based index
+        const currentStock = Number(dataBarang[rowIndex][5]); // Kolom F (Index 5)
         const qtyToAdd = Number(payload.qty);
         const validStock = isNaN(currentStock) ? 0 : currentStock;
         const validQty = isNaN(qtyToAdd) ? 0 : qtyToAdd;
         const newStock = validStock + validQty;
         const buyPrice = Number(payload.harga_beli);
 
+        // Update Stok (Kolom 6 / F)
         iSheet.getRange(sheetRow, 6).setValue(newStock); 
+        // Update Harga Beli Terakhir (Kolom 4 / D)
         iSheet.getRange(sheetRow, 4).setValue(buyPrice); 
 
+        // Reset status ordered jika ada
         if (dataBarang[rowIndex][7] === 'ordered') {
            iSheet.getRange(sheetRow, 8).setValue(''); 
         }
 
+        // Catat Pengeluaran di Kas
         const kId = Utilities.getUuid();
         const totalBelanja = validQty * buyPrice;
         const deskripsi = `Belanja Stok: ${payload.nama} (${validQty} pcs)`;
@@ -208,6 +226,7 @@ function doPost(e) {
         paymentType
       ]);
 
+      // Update Stok Barang
       const dataBarang = iSheet.getDataRange().getValues();
       payload.items.forEach(cartItem => {
         const cartId = String(cartItem.id).trim();
@@ -221,6 +240,7 @@ function doPost(e) {
         }
       });
 
+      // Update Kas (Debit)
       const kId = Utilities.getUuid();
       const deskripsi = `Penjualan POS (${paymentType})`;
       kSheet.appendRow([kId, date, deskripsi, payload.total, 0, 'Penjualan']);
@@ -250,14 +270,13 @@ function doPost(e) {
       
     } else if (action === 'UPDATE_LEDGER') {
       const kSheet = ss.getSheetByName('Kas');
-      // Format Row: id, tanggal, deskripsi, debit, kredit, kategori
       const date = new Date(payload.tanggal);
       updateRow(kSheet, payload.id, [
         payload.id, 
         date, 
         payload.deskripsi, 
-        payload.debit, 
-        payload.kredit, 
+        Number(payload.debit), 
+        Number(payload.kredit), 
         payload.kategori
       ]);
       result = { status: 'success' };
@@ -270,11 +289,16 @@ function doPost(e) {
 
   } catch (err) {
     result = { status: 'error', message: err.toString() };
+  } finally {
+    // Selalu lepaskan Lock setelah selesai
+    lock.releaseLock();
   }
 
   return ContentService.createTextOutput(JSON.stringify(result))
     .setMimeType(ContentService.MimeType.JSON);
 }
+
+// --- HELPER FUNCTIONS ---
 
 function getData(sheet) {
   if (!sheet) return [];
@@ -291,8 +315,12 @@ function getData(sheet) {
 function updateRow(sheet, id, newValues) {
   const data = sheet.getDataRange().getValues();
   const targetId = String(id).trim();
+  
+  // Start loop dari 1 (skip header)
   for (let i = 1; i < data.length; i++) {
+    // Bandingkan ID secara string untuk keamanan
     if (String(data[i][0]).trim() === targetId) {
+      // Row di sheet adalah i + 1. Update rentang kolom sesuai panjang newValues.
       sheet.getRange(i + 1, 1, 1, newValues.length).setValues([newValues]);
       break;
     }

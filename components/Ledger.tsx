@@ -79,10 +79,10 @@ const Ledger: React.FC<LedgerProps> = ({ data, refreshData }) => {
         jumlah: Number(capitalAmount),
         deskripsi: capitalDesc
       });
+      refreshData();
       alert('Modal berhasil ditambahkan!');
       setIsCapitalModalOpen(false);
       setCapitalAmount('');
-      refreshData();
     } catch (error) {
       alert('Gagal menyimpan modal');
       console.error(error);
@@ -108,11 +108,11 @@ const Ledger: React.FC<LedgerProps> = ({ data, refreshData }) => {
         deskripsi: `${expenseCategory}: ${expenseDesc}`,
         kategori: expenseCategory
       });
+      refreshData();
       alert('Pengeluaran berhasil dicatat!');
       setIsExpenseModalOpen(false);
       setExpenseAmount('');
       setExpenseDesc('');
-      refreshData();
     } catch (error) {
       alert('Gagal menyimpan pengeluaran');
       console.error(error);
@@ -141,6 +141,7 @@ const Ledger: React.FC<LedgerProps> = ({ data, refreshData }) => {
     try {
        await Api.postData('DELETE_LEDGER', { id });
        refreshData();
+       alert("Data kas berhasil dihapus.");
     } catch (error) {
        console.error(error);
        alert("Gagal menghapus data.");
@@ -172,10 +173,10 @@ const Ledger: React.FC<LedgerProps> = ({ data, refreshData }) => {
       };
 
       await Api.postData('UPDATE_LEDGER', payload);
+      refreshData();
       alert("Data kas berhasil diperbarui.");
       setIsEditModalOpen(false);
       setEditingEntry(null);
-      refreshData();
     } catch (error) {
       console.error(error);
       alert("Gagal memperbarui data kas.");

@@ -94,9 +94,14 @@ const Inventory: React.FC<InventoryProps> = ({ data, refreshData }) => {
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('Yakin ingin menghapus barang ini?')) {
-      await Api.postData('DELETE_PRODUCT', { id });
-      refreshData();
+    if (confirm('Yakin ingin menghapus barang ini secara permanen dari Database?')) {
+      try {
+        await Api.postData('DELETE_PRODUCT', { id });
+        refreshData(); // Refresh data untuk update UI
+        alert("Barang berhasil dihapus.");
+      } catch (error) {
+        alert("Gagal menghapus barang.");
+      }
     }
   };
 
@@ -107,11 +112,24 @@ const Inventory: React.FC<InventoryProps> = ({ data, refreshData }) => {
     setIsSaving(true);
     try {
       const action = editingItem.id ? 'UPDATE_PRODUCT' : 'ADD_PRODUCT';
-      await Api.postData(action, editingItem);
-      setIsModalOpen(false);
+      
+      // Pastikan data yang dikirim adalah tipe yang benar (Number)
+      const payload = {
+        ...editingItem,
+        harga_beli: Number(editingItem.harga_beli),
+        harga_jual: Number(editingItem.harga_jual),
+        stok: Number(editingItem.stok)
+      };
+
+      await Api.postData(action, payload);
+      
+      // Refresh data sebelum menutup modal
       refreshData();
+      setIsModalOpen(false);
+      alert(editingItem.id ? 'Data barang diperbarui!' : 'Barang baru berhasil ditambahkan!');
     } catch (error) {
-      alert('Gagal menyimpan data');
+      alert('Gagal menyimpan data ke database.');
+      console.error(error);
     } finally {
       setIsSaving(false);
     }
@@ -139,6 +157,8 @@ const Inventory: React.FC<InventoryProps> = ({ data, refreshData }) => {
         harga_beli: price
       });
       
+      // Refresh data PENTING agar stok terupdate di tabel
+      refreshData(); 
       alert("Stok berhasil ditambahkan dan tercatat di Pengeluaran.");
       
       // Reset form
@@ -147,9 +167,8 @@ const Inventory: React.FC<InventoryProps> = ({ data, refreshData }) => {
       setRestockSearchTerm('');
       setIsRestockModalOpen(false);
       
-      refreshData();
     } catch (error) {
-      alert("Gagal melakukan restok. Pastikan Google Apps Script sudah di-Deploy sebagai 'New Version'.");
+      alert("Gagal melakukan restok. Pastikan koneksi internet lancar.");
       console.error(error);
     } finally {
       setIsSaving(false);
