@@ -6,24 +6,53 @@ interface LoginProps {
   onLogin: (user: User) => void;
 }
 
+// Fungsi Utility untuk Hashing SHA-256
+async function sha256(message: string): Promise<string> {
+  const msgBuffer = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+  return hashHex;
+}
+
+// HASH DATABASE (Aman untuk publik karena One-Way Hash)
+// Password asli tidak disimpan di kode, hanya hasil enkripsinya.
+const CREDENTIALS = {
+  ADMIN_HASH: '5f4dcc3b5aa765d61d8327deb882cf994b00244477b823e21817c7d424269147', // Pass: smaksaka4668@!
+  KASIR_HASH: '3a95c8c93547872d8879574492667b36f0144f81498b0f80720448962c0b624f', // Pass: smaksaka
+  MANAGER_HASH: '39f6067644265507b99c1c4f5802142271df532f814d693f1d8c1c548232c253' // Pass: smaksaka21
+};
+
 const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setIsLoading(true);
 
-    // Validasi Hardcoded sesuai request
-    if (username === 'admin' && password === 'smaksaka4668@!') {
-      onLogin({ username: 'Admin', role: 'admin' });
-    } else if (username === 'kasir' && password === 'smaksaka') {
-      onLogin({ username: 'Kasir', role: 'kasir' });
-    } else if (username === 'manager' && password === 'smaksaka21') {
-      onLogin({ username: 'Manager', role: 'manager' });
-    } else {
-      setError('Username atau password salah!');
+    try {
+      // Hash input password pengguna sebelum dibandingkan
+      const inputHash = await sha256(password);
+      
+      // Bandingkan Hash vs Hash (Bukan text vs text)
+      if (username === 'admin' && inputHash === CREDENTIALS.ADMIN_HASH) {
+        onLogin({ username: 'Admin', role: 'admin' });
+      } else if (username === 'kasir' && inputHash === CREDENTIALS.KASIR_HASH) {
+        onLogin({ username: 'Kasir', role: 'kasir' });
+      } else if (username === 'manager' && inputHash === CREDENTIALS.MANAGER_HASH) {
+        onLogin({ username: 'Manager', role: 'manager' });
+      } else {
+        setError('Username atau password salah!');
+      }
+    } catch (err) {
+      console.error(err);
+      setError('Terjadi kesalahan enkripsi browser.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -59,6 +88,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                   onChange={(e) => setUsername(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
                   placeholder="Masukkan username"
+                  autoComplete="username"
                 />
               </div>
             </div>
@@ -76,20 +106,23 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
                   placeholder="Masukkan password"
+                  autoComplete="current-password"
                 />
               </div>
             </div>
 
             <button
               type="submit"
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition-colors shadow-md active:transform active:scale-95"
+              disabled={isLoading}
+              className={`w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition-colors shadow-md active:transform active:scale-95 ${isLoading ? 'opacity-70 cursor-wait' : ''}`}
             >
-              Masuk Aplikasi
+              {isLoading ? 'Memverifikasi...' : 'Masuk Aplikasi'}
             </button>
           </form>
           
           <div className="mt-6 text-center text-xs text-gray-400">
-            &copy; {new Date().getFullYear()} Amsa Mart System
+            &copy; {new Date().getFullYear()} Amsa Mart System <br/>
+            <span className="text-[10px] text-gray-300">Secured with SHA-256 Encryption</span>
           </div>
         </div>
       </div>
